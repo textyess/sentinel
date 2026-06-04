@@ -1,0 +1,61 @@
+/**
+ * Public surface of @textyess/qa-agent. Phase 1 (the autonomous crawler) and
+ * later phases import the engine from here rather than reaching into core/ paths.
+ */
+export { createTextyessAdapter, getAdapter } from "./adapters";
+export type { LoginResult } from "./core/auth/login";
+export { performLogin } from "./core/auth/login";
+export { ensureAppReachable } from "./core/bringup/app";
+export type { DriverOptions, DriverSession } from "./core/browser/driver";
+export { createSession } from "./core/browser/driver";
+export { clickBySelectors, fillBySelectors } from "./core/browser/interact";
+export type { EnvConfig } from "./core/config";
+export { loadEnvConfig, PACKAGE_ROOT, REPO_ROOT } from "./core/config";
+export type { ActuateOptions, DiscoveredLink } from "./core/crawler/actuate";
+export { actuateForDiscovery } from "./core/crawler/actuate";
+export type { CrawlOptions } from "./core/crawler/crawler";
+export { crawl } from "./core/crawler/crawler";
+export { extractControls, stateSignature } from "./core/graph/extract";
+export type { SavedGraph } from "./core/graph/store";
+export { currentGitSha, graphScreenshotDir, loadGraph, saveGraph } from "./core/graph/store";
+export type {
+    ControlKind,
+    ControlRef,
+    CoverageReport,
+    EdgeVia,
+    GraphEdge,
+    InteractionGraph,
+    PageNode,
+} from "./core/graph/types";
+export { normalizePath, resolveInternalPath } from "./core/graph/url";
+export { humanDwell, type PacingOptions, thinkPause } from "./core/human/pacing";
+export { logger } from "./core/logger";
+export type { PrMeta } from "./core/pr/github";
+export { detectRepo, getChangedFiles, getPrMeta, resolveWebPreviewUrl } from "./core/pr/github";
+export type { ReplayOptions } from "./core/pr/replay";
+export { replayFlows, selectFlows } from "./core/pr/replay";
+export type { FlowResult, PrRunManifest } from "./core/pr/types";
+export { createReasoner, llmCredentialIssue } from "./core/reasoner/ai-sdk-reasoner";
+export type { GenerateObjectOptions, GenerateTextOptions, Reasoner } from "./core/reasoner/types";
+export type { PreflightResult, ProductionMarkerHit } from "./core/safety/production-guard";
+export { ProductionGuardError, runProductionPreflight } from "./core/safety/production-guard";
+export { installReadOnlyGuard } from "./core/safety/read-only-guard";
+export { redactSecret } from "./core/safety/redact";
+export { synthesizeSiteMap } from "./core/sitemap/synthesize";
+export type {
+    AuthStrategy,
+    BlockedRequest,
+    Credentials,
+    DatastoreTarget,
+    NetworkEvent,
+    PortMap,
+    RegExpSource,
+    RepoAdapter,
+    SafetyConfig,
+} from "./core/types";
+export type { ExecuteOptions } from "./core/verify/execute";
+export { executePlan, judgeVerdict } from "./core/verify/execute";
+export type { PlanContext } from "./core/verify/plan";
+export { generatePlan } from "./core/verify/plan";
+export type { PlanStep, StepResult, TestPlan, Verdict, VerifyManifest } from "./core/verify/types";
+export { SENTINEL } from "./persona";

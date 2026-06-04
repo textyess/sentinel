@@ -1,0 +1,13 @@
+# Sentinel runtime output: videos, screenshots, traces, saved sessions, graphs
+.sentinel/
+
+# Local credentials / config
+.env
+.env.local
+
+# Build / cache
+dist/
+.turbo/
+*.tsbuildinfo
+node_modules/
+.DS_Store
