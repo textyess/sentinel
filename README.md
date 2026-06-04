@@ -1,74 +1,109 @@
-# Sentinel — `@textyess/qa-agent`
+# 🛡 Sentinel
 
-An autonomous, persona-driven browser agent that **learns the app** by exploring it, then **tests PRs** by spinning them up, walking the affected flows in a real browser, recording video, and emitting a verdict on whether the PR makes sense.
+**An autonomous browser agent that learns your web app, then verifies pull requests with video — read-only, safe to point at production.**
 
-Built as a repo-agnostic **core** + per-repo **adapters**, so the same engine can target other repositories later. TextYess is target #1.
+Sentinel logs into your app and maps how it works. When a PR comes in, it **plans a browser test for the change, runs it on the PR's preview, records the screen, and judges whether the PR does what it claims** — `pass` / `fail` / `uncertain`, with evidence.
 
+It never writes: every mutating request is blocked in the browser, so you can point it straight at a live environment.
 
-## Status
+---
 
-Repo-agnostic core (`src/core/`) + per-repo adapter (`src/adapters/textyess.ts`). All runs are read-only against prod: a fail-safe **production preflight** + a **read-only network guard** (mutations fulfilled locally, never sent), with popups/downloads killed.
+## Why
 
-- **Phase 0 — foundation.** `guard` (preflight), `login`, `smoke`. Playwright driver with video + network/console capture + saved session; multi-step auth bootstrap.
-- **Phase 1 — learn & map.** `crawl` → bounded BFS into an interaction graph (page-state nodes + ranked selectors + nav edges + screenshots), plus LLM-guided actuation (click expanders/tabs to reveal more). `sitemap` → readable Markdown map from the graph.
-- **Phase 2 — PR replay.** `pr <N>` → resolve the PR's Vercel preview, map the diff to routes, re-walk the affected flows with video + console/network/control-diff vs the baseline + a redacted manifest.
-- **Phase 3 — verify.** `verify <N>` (`--plan-only`) → the LLM plans a read-only browser test from the PR, a goal-directed executor runs it on the preview (navigate/click/type/assert, resolving the PR's new controls live, vision asserts), records video, and judges `pass / fail / uncertain` with evidence.
+A PR changes the UI. The diff looks fine and CI is green — but does the feature actually *work* in the browser? Normally a human has to pull the branch, click around, and check. Sentinel does that for you and hands back a video and a verdict.
 
-LLM via the Vercel AI SDK (Anthropic / OpenAI / **Bedrock**). Human-like pacing (think-pauses + adaptive dwell). Every LLM run prints its token cost and, with `LANGFUSE_*` set, exports one Langfuse trace per run.
+## What it does
 
-## Setup
+| Step | Command | |
+|---|---|---|
+| **Learn** | `crawl` · `sitemap` | crawl the running app into an interaction graph + a human-readable site map |
+| **Replay a PR** | `pr <N>` | re-walk the affected flows on the PR's preview, with video + a diff vs the baseline |
+| **Verify a PR** | `verify <N>` | the model **plans** a test from the PR, **runs** it on the preview (clicks, types, asserts — with vision), **records** it, and **judges** it |
+
+Plus `guard` (safety preflight), `login`, and `smoke` (one-page sanity check).
+
+## Read-only by design
+
+Sentinel is safe to run against a live or production app:
+
+- A **network guard** fulfils every mutating request (`POST`/`PUT`/`PATCH`/`DELETE`) locally — it never reaches your server. Telemetry gets a benign `200`; popups and downloads are killed.
+- A **fail-safe preflight** clamps to read-only whenever the target is a remote host or matches a production marker. Writes require an explicit opt-in.
+
+So even if the agent misclicks a "Delete", nothing happens to your data.
+
+## Quick start
 
 ```bash
-cp apps/qa-agent/.env.example apps/qa-agent/.env
-# edit apps/qa-agent/.env: set SENTINEL_EMAIL / SENTINEL_PASSWORD and SENTINEL_BASE_URL
+git clone https://github.com/textyess/Sentinel.git && cd Sentinel
 pnpm install
-# one-time, if Playwright's Chromium isn't installed yet:
-pnpm --filter @textyess/qa-agent exec playwright install chromium
+pnpm exec playwright install chromium      # one-time
+
+cp .env.example .env                        # then edit:
+#   SENTINEL_BASE_URL                – where your app runs (a deployment, or http://localhost:3000)
+#   SENTINEL_EMAIL / SENTINEL_PASSWORD – a test account to log in with
+#   an LLM provider + key            – Anthropic, OpenAI, or AWS Bedrock
+
+pnpm crawl                 # learn the app -> interaction graph
+pnpm sitemap               # readable map of what it learned
+pnpm verify <PR>           # plan + run + judge a PR (needs the GitHub CLI + a preview deploy)
 ```
 
-`SENTINEL_BASE_URL` can be a local web app (`http://localhost:3000`, backed by `apps/web/.env`) or a deployed dashboard. Against prod, the seeded `onboarded-user@textyess.com` does **not** exist — supply a real account.
+Artifacts — videos, screenshots, the interaction graph, run manifests — land in `.sentinel/` (gitignored).
 
-## Commands
+## Configuration
 
-```bash
-# Safety preflight only — no browser, no app needed. Reports if a prod DB is in play.
-pnpm --filter @textyess/qa-agent guard
+Everything is via `.env` (see [`.env.example`](.env.example)):
 
-# Log in once and save the authenticated session.
-pnpm --filter @textyess/qa-agent login
+| Variable | Purpose |
+|---|---|
+| `SENTINEL_BASE_URL` | the app to drive |
+| `SENTINEL_EMAIL` / `SENTINEL_PASSWORD` | login credentials |
+| `SENTINEL_READ_ONLY` / `SENTINEL_ALLOW_PROD_WRITES` | safety switches (read-only is forced on remote/prod targets) |
+| `SENTINEL_LLM_PROVIDER` / `SENTINEL_LLM_MODEL` | `anthropic` · `openai` · `bedrock` |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `AWS_*` | provider credentials |
+| `LANGFUSE_*` | optional — trace LLM cost per run |
+| `SENTINEL_HUMAN_PACING` / `SENTINEL_PACE_MS` | human-like dwell + think-pauses |
 
-# Phase 0 smoke: boot -> log in -> screenshot -> report blocked writes.
-pnpm --filter @textyess/qa-agent smoke
+The LLM layer is the **Vercel AI SDK**, so Anthropic, OpenAI, or Claude-on-Bedrock all work. Every run prints its token cost; with `LANGFUSE_*` set it also exports one trace per run.
 
-# Typecheck.
-pnpm --filter @textyess/qa-agent typecheck
+## How it works
+
+```
+PR ──► plan      the model reads the PR (intent + diff) + the app map → a read-only to-do list
+   ──► execute   a goal-directed runner drives the browser — navigate, click, type, assert (vision) —
+                 resolving the PR's NEW controls live, recording video
+   ──► judge     pass / fail / uncertain, with cited evidence
 ```
 
-Artifacts (videos, screenshots, sessions) land in `apps/qa-agent/.sentinel/` (gitignored).
+The engine is **repo-agnostic** (`src/core/`). Everything app-specific lives in an **adapter** (`src/adapters/`): the login recipe, route conventions, how to find a PR's preview, and the production markers.
 
-## Safety model
+## Supporting your app
 
-Two independent signals decide whether to clamp to read-only, and **either one** is enough:
+Sentinel adapts to an app through a small adapter describing its login form, routes, preview lookup, and safety markers. The repository ships a reference adapter as a worked example you can copy.
 
-1. **Production preflight** scans every datastore/endpoint this run can touch — `apps/api/.env` `DB_SERVER`, `apps/brain0/.env` `MONGODB_URL` / `DATABASE_URL` / `NESTJS_API_URL`, the browser's API origin (`apps/web/.env` `NEXT_PUBLIC_BASE_URL`), and the target URL — against the adapter's `productionMarkers`.
-2. **Remote-host fail-safe** — any target host that isn't local (`localhost`/`127.0.0.1`/`*.local`) is treated as potentially production, so an *undetected* prod host (e.g. `app.textyess.com`) can never become a silent write path.
-
-When either fires, Sentinel **forces read-only** regardless of `SENTINEL_READ_ONLY`. The only way to enable writes against a prod/remote target is `SENTINEL_ALLOW_PROD_WRITES=true`. A fail-closed adapter (`failClosedOnProduction: true`) hard-stops instead; the TextYess adapter (prod approved for now) clamps to read-only.
-
-The **read-only network guard** then aborts mutating requests in the browser (matching the auth allowlist against the URL *path* only, so query-string tricks can't smuggle a write), and **service workers are blocked** so no request escapes interception. Even a misclick on a destructive control can't reach the server.
+> **Roadmap:** config-driven onboarding — a `sentinel init` that auto-detects the framework, login, and preview setup and generates an adapter for *any* app — plus a GitHub App that auto-verifies PRs and a local UI for browsing runs.
 
 ## Layout
 
 ```
 src/
-  core/            # repo-agnostic engine
-    safety/        # production-guard, read-only-guard, redact
-    browser/       # Playwright driver (video, network capture, guard)
-    auth/          # login recipe + storageState
-    bringup/       # app reachability
-    config.ts      # env + paths
-    types.ts       # RepoAdapter contract
-  adapters/        # per-repo config — textyess.ts holds all TextYess specifics
-  commands.ts      # guard / login / smoke
-  cli.ts           # `sentinel` CLI
+  core/         # repo-agnostic engine
+    safety/     # production preflight, read-only network guard, redaction
+    browser/    # Playwright driver (video, network/console capture)
+    graph/      # interaction-graph model + extraction
+    crawler/    # the learning crawl + LLM-guided actuation
+    pr/         # GitHub plumbing + PR replay
+    verify/     # plan -> execute -> judge
+    reasoner/   # LLM layer (Vercel AI SDK)
+    human/      # human-like pacing
+  adapters/     # per-app config (login, routes, preview, safety)
+  cli.ts        # the `sentinel` CLI
 ```
+
+## Contributing
+
+Issues and PRs welcome. `pnpm typecheck` and `pnpm lint` should pass; the codebase uses [Biome](https://biomejs.dev) (4-space indent, double quotes, named exports).
+
+## License
+
+[MIT](LICENSE). Maintained by [TextYess](https://github.com/textyess).
