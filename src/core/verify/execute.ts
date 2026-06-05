@@ -5,11 +5,12 @@ import { z } from "zod";
 import type { DriverSession } from "../browser/driver";
 import { clickBySelectors, fillBySelectors } from "../browser/interact";
 import { dismissOverlays, extractControls, waitForInteractive } from "../graph/extract";
-import type { ControlRef } from "../graph/types";
-import { isLoginPath, pathnameOf, stripQuery } from "../graph/url";
+import type { ControlRef, InteractionGraph } from "../graph/types";
+import { stripQuery } from "../graph/url";
 import { humanDwell, type PacingOptions, thinkPause } from "../human/pacing";
 import { logger } from "../logger";
 import type { Reasoner } from "../reasoner/types";
+import { navigateLikeUser } from "./navigate";
 import type { PlanStep, StepResult, TestPlan, Verdict } from "./types";
 
 export interface ExecuteOptions {
@@ -21,6 +22,8 @@ export interface ExecuteOptions {
     screenshotDir: string;
     pacing: PacingOptions;
     loginPath: string;
+    /** The baseline interaction graph — the map a 'navigate' step clicks through, like a user. */
+    graph: InteractionGraph;
 }
 
 const RESOLVE_SCHEMA = z.object({ index: z.number().int(), confidence: z.enum(["high", "medium", "low"]) });
@@ -109,17 +112,21 @@ async function executeStep(
     try {
         if (step.action === "navigate") {
             const target = step.target.replace(/^https?:\/\/[^/]+/, "");
-            const path2 = target.startsWith("/") ? target : `/${target}`;
-            await page.goto(path2, { waitUntil: "domcontentloaded", timeout: options.navTimeoutMs });
-            await waitForInteractive(page, options.settleMs);
+            const targetPath = target.startsWith("/") ? target : `/${target}`;
+            // Move between pages the way a user does — click the app's own menu/nav,
+            // not the URL bar. Falls back to a direct load only when no in-app route exists.
+            const outcome = await navigateLikeUser(page, targetPath, options.graph, {
+                destructive: options.destructive,
+                baseUrl: session.baseUrl,
+                loginPath: options.loginPath,
+                settleMs: options.settleMs,
+                navTimeoutMs: options.navTimeoutMs,
+                clickTimeoutMs: options.clickTimeoutMs,
+            });
             await dismissOverlays(page);
             await humanDwell(page, options.pacing);
-            if (isLoginPath(page.url(), options.loginPath)) {
-                status = "failed";
-                observation = "redirected to login";
-            } else {
-                observation = `at ${pathnameOf(page.url())}`;
-            }
+            status = outcome.ok ? "ok" : "failed";
+            observation = outcome.observation;
         } else if (step.action === "click" || step.action === "hover") {
             const controls = await extractControls(page, options.destructive, session.baseUrl).catch(
                 (): ControlRef[] => [],

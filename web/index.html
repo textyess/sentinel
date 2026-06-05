@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Sentinel</title>
+        <link rel="stylesheet" href="/styles.css" />
+        <link
+            rel="icon"
+            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>%F0%9F%9B%A1</text></svg>"
+        />
+    </head>
+    <body>
+        <header class="topbar">
+            <div class="brand">
+                <span class="glyph">🛡</span>
+                <div>
+                    <h1>Sentinel</h1>
+                    <p class="tagline">I learn your app, then watch your PRs.</p>
+                </div>
+            </div>
+            <div class="topbar-right">
+                <div id="health" class="health" aria-label="status"></div>
+                <button id="toggle-settings" class="ghost" type="button">⚙ Settings</button>
+            </div>
+        </header>
+
+        <main>
+            <section id="settings" class="card form hidden" aria-label="settings"></section>
+            <section id="live" class="card live hidden" aria-live="polite">
+                <div class="live-head">
+                    <h2>Live run</h2>
+                    <button id="live-close" class="ghost" type="button">Dismiss</button>
+                </div>
+                <div id="live-chips" class="chips"></div>
+                <div id="live-verdict"></div>
+                <pre id="live-log" class="log" tabindex="0"></pre>
+            </section>
+
+            <section class="col">
+                <div class="section-head">
+                    <h2>Projects</h2>
+                    <button id="toggle-form" class="primary" type="button">+ Add project</button>
+                </div>
+                <form id="project-form" class="card form hidden"></form>
+                <div id="projects" class="projects"></div>
+            </section>
+
+            <section class="col">
+                <div class="section-head">
+                    <h2>Gallery</h2>
+                    <span id="gallery-count" class="muted"></span>
+                </div>
+                <div id="gallery" class="gallery"></div>
+            </section>
+        </main>
+
+        <script type="module" src="/app.js"></script>
+    </body>
+</html>

@@ -27,6 +27,9 @@ const PLAN_SYSTEM =
     "STRICT read-only rule: never include steps that create, save, send, delete, pay, publish, or otherwise write " +
     "data. If completing the feature would require a write, instead 'assert' that the relevant form/submit control " +
     "is present and stop there. Ground every target in the provided app map (real routes and control names). " +
+    "The agent moves through the app like a real user: a 'navigate' step is carried out by finding and clicking " +
+    "the app's own menu/sidebar/nav link to that route — never by editing the URL bar — so use 'navigate' (target " +
+    "= the destination path) for page changes and do NOT add separate steps just to open the menu. " +
     "Prefer 6-12 focused steps. Each step: action, target (human description; a path for navigate), value (for " +
     "type/select, else null), expect (what should be visibly true), reason (tie to the PR).";
 

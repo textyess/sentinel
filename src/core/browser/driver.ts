@@ -35,6 +35,32 @@ const LOGGED_RESOURCE_TYPES = new Set(["document", "xhr", "fetch"]);
 const CONSOLE_NOISE = /ResizeObserver loop|Non-Error promise rejection|extension:\/\//i;
 
 /**
+ * A visible cursor overlay so recorded videos show where Sentinel moves and clicks
+ * (Playwright records the page DOM, not the OS pointer). Purely cosmetic —
+ * pointer-events:none, no network, no app-specific knowledge. Injected only when
+ * recording. Based on the well-known Puppeteer mouse-helper.
+ */
+const MOUSE_HELPER_SCRIPT = `(() => {
+  if (window.__sentinelCursor) { return; }
+  window.__sentinelCursor = true;
+  var attach = function () {
+    if (!document.body) { return; }
+    var style = document.createElement('style');
+    style.textContent = '#__sentinel_cursor{position:fixed;top:0;left:0;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:rgba(88,166,255,.35);border:2px solid #58a6ff;box-shadow:0 0 0 1px rgba(0,0,0,.45);pointer-events:none;z-index:2147483647;transition:width .12s,height .12s,margin .12s,background .12s}' +
+      '#__sentinel_cursor.down{width:30px;height:30px;margin:-15px 0 0 -15px;background:rgba(88,166,255,.55)}';
+    (document.head || document.documentElement).appendChild(style);
+    var dot = document.createElement('div');
+    dot.id = '__sentinel_cursor';
+    dot.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(dot);
+    document.addEventListener('mousemove', function (e) { dot.style.left = e.clientX + 'px'; dot.style.top = e.clientY + 'px'; }, true);
+    document.addEventListener('mousedown', function () { dot.classList.add('down'); }, true);
+    document.addEventListener('mouseup', function () { dot.classList.remove('down'); }, true);
+  };
+  if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', attach); } else { attach(); }
+})();`;
+
+/**
  * The deterministic substrate every phase drives through: a fresh Chromium
  * context with the read-only guard installed, service workers blocked (so no
  * request escapes interception), video recording, network capture, and optional
@@ -68,6 +94,11 @@ export async function createSession(options: DriverOptions): Promise<DriverSessi
 
         if (options.safety.readOnly) {
             await installReadOnlyGuard(context, options.safety, (event) => blocked.push(event));
+        }
+
+        // Only when recording: a visible cursor makes the video legible (which click happened where).
+        if (options.videoDir) {
+            await context.addInitScript(MOUSE_HELPER_SCRIPT);
         }
 
         const page = await context.newPage();

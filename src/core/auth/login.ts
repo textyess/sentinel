@@ -44,10 +44,21 @@ export async function performLogin(
     );
     await password.fill(credentials.password);
 
-    await page
-        .getByRole("button", { name: new RegExp(auth.submitNamePattern, "i") })
-        .first()
-        .click();
+    // A marketing nav often has its own "Login" control that precedes the form's
+    // submit in the DOM, so a plain .first() would click the wrong one and never
+    // submit. Prefer the submit button INSIDE the form; fall back to the last
+    // name-match (nav controls usually come first), then to an implicit submit
+    // from the password field.
+    const submitPattern = new RegExp(auth.submitNamePattern, "i");
+    const formSubmit = page.locator("form").getByRole("button", { name: submitPattern });
+    const anySubmit = page.getByRole("button", { name: submitPattern });
+    if ((await formSubmit.count()) > 0) {
+        await formSubmit.first().click();
+    } else if ((await anySubmit.count()) > 0) {
+        await anySubmit.last().click();
+    } else {
+        await password.press("Enter");
+    }
 
     try {
         await page.waitForURL(new RegExp(auth.authenticatedUrlPattern), { timeout });

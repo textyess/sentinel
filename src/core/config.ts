@@ -9,9 +9,7 @@ export const PACKAGE_ROOT = path.resolve(here, "..", "..");
  * The repo whose local files (e.g. .env) an adapter may inspect. Standalone, that
  * is this package; set SENTINEL_REPO_ROOT to point at a target repo/monorepo.
  */
-export const REPO_ROOT = process.env.SENTINEL_REPO_ROOT
-    ? path.resolve(process.env.SENTINEL_REPO_ROOT)
-    : PACKAGE_ROOT;
+export const REPO_ROOT = process.env.SENTINEL_REPO_ROOT ? path.resolve(process.env.SENTINEL_REPO_ROOT) : PACKAGE_ROOT;
 
 dotenv.config({ path: path.join(PACKAGE_ROOT, ".env") });
 

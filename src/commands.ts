@@ -7,14 +7,14 @@ import { ensureAppReachable } from "./core/bringup/app";
 import type { DriverSession } from "./core/browser/driver";
 import { createSession } from "./core/browser/driver";
 import { loadEnvConfig, REPO_ROOT } from "./core/config";
-import { crawl } from "./core/crawler/crawler";
-import { currentGitSha, graphScreenshotDir, loadGraph, saveGraph } from "./core/graph/store";
-import type { InteractionGraph } from "./core/graph/types";
+import { runCrawlForProject } from "./core/crawler/run";
+import { currentGitSha, loadGraph } from "./core/graph/store";
+import type { CoverageReport, InteractionGraph } from "./core/graph/types";
 import type { PacingOptions } from "./core/human/pacing";
 import { logger } from "./core/logger";
 import { endRun, runTotals, startRun } from "./core/observability/langfuse";
 import type { PrMeta } from "./core/pr/github";
-import { detectRepo, getChangedFiles, getPrDiff, getPrMeta, resolveWebPreviewUrl } from "./core/pr/github";
+import { detectRepo, getChangedFiles, getPrMeta, resolveWebPreviewUrl } from "./core/pr/github";
 import { replayFlows, selectFlows } from "./core/pr/replay";
 import type { FlowResult, PrRunManifest } from "./core/pr/types";
 import { createReasoner, llmCredentialIssue } from "./core/reasoner/ai-sdk-reasoner";
@@ -23,9 +23,7 @@ import { runProductionPreflight } from "./core/safety/production-guard";
 import { redactSecret } from "./core/safety/redact";
 import { synthesizeSiteMap } from "./core/sitemap/synthesize";
 import type { BlockedRequest, Credentials, RepoAdapter, SafetyConfig } from "./core/types";
-import { executePlan, judgeVerdict } from "./core/verify/execute";
-import { generatePlan } from "./core/verify/plan";
-import type { StepResult, TestPlan, Verdict, VerifyManifest } from "./core/verify/types";
+import { planForProject, runVerifyForProject } from "./core/verify/run";
 
 /** Filesystem-safe timestamp for run directories. */
 function stamp(): string {
@@ -180,10 +178,7 @@ export async function runCrawl(maxPages: number, interact: boolean, actuationsPe
     logger.banner(`Phase 1 crawl — mapping the app (max ${maxPages} pages)`);
     const env = loadEnvConfig();
     const adapter = getAdapter();
-
-    const preflight = await runProductionPreflight(adapter, env.allowProdWrites);
-    const credentials = requireCredentials(adapter);
-    await ensureAppReachable(adapter.baseUrl);
+    requireCredentials(adapter);
 
     let reasoner: Reasoner | null = null;
     if (interact) {
@@ -197,37 +192,18 @@ export async function runCrawl(maxPages: number, interact: boolean, actuationsPe
         }
     }
 
-    const safety: SafetyConfig = { ...adapter.safety, readOnly: preflight.effectiveReadOnly };
-    const session = await createSession({ baseUrl: adapter.baseUrl, headless: env.headless, safety });
-
-    let graph: InteractionGraph | null = null;
-    try {
-        logger.info("Authenticating ...");
-        await performLogin(session.page, adapter.auth, credentials, { timeoutMs: env.loginTimeoutMs });
-        logger.success("Authenticated. Crawling ...");
-
-        graph = await crawl(session, adapter, {
-            maxPages,
-            settleMs: 6000,
-            navTimeoutMs: env.loginTimeoutMs,
-            screenshot: true,
-            screenshotDir: graphScreenshotDir(env.outputDir, adapter.id),
-            gitSha: currentGitSha(REPO_ROOT),
-            interact: reasoner !== null,
-            reasoner,
-            actuationsPerPage,
-            pacing: pacingFromEnv(env),
-        });
-    } finally {
-        await closeQuietly(session.close);
-    }
-
-    if (graph) {
-        const { graphFile } = saveGraph(graph, env.outputDir);
-        reportCoverage(graph);
-        logger.success(`Interaction graph saved -> ${graphFile}`);
-    }
-    reportBlocked(session.blocked);
+    const result = await runCrawlForProject({
+        adapter,
+        env,
+        outputDir: env.outputDir,
+        maxPages,
+        actuationsPerPage,
+        reasoner,
+        gitSha: currentGitSha(REPO_ROOT),
+    });
+    logger.success(`Interaction graph saved -> ${result.graphFile}`);
+    reportCoverage(result.coverage);
+    reportBlocked(result.blocked);
     await reportRunCost();
 }
 
@@ -266,9 +242,8 @@ export async function runSiteMap(): Promise<void> {
     await reportRunCost();
 }
 
-function reportCoverage(graph: InteractionGraph): void {
-    const c = graph.coverage;
-    logger.success(`Mapped ${c.nodeCount} page state(s), ${c.edgeCount} navigation edge(s).`);
+function reportCoverage(c: CoverageReport): void {
+    // The "Mapped N page state(s)..." headline is already logged by runCrawlForProject.
     logger.info(`Areas reached: ${c.areasReached.join(", ") || "(none)"}`);
     if (c.routesUnreached.length > 0) {
         logger.warn(`Seeded routes not reached: ${c.routesUnreached.join(", ")}`);
@@ -449,8 +424,9 @@ export async function runVerify(prNumber: number, baseUrlOverride: string | null
     }
     logger.banner(`Phase 3 verify — #${prNumber}${planOnly ? " (plan only)" : ""}`);
     const env = loadEnvConfig();
+    const repo = await detectRepo();
     const adapter = getAdapter();
-    const credentials = requireCredentials(adapter);
+    requireCredentials(adapter);
 
     const issue = llmCredentialIssue(env.llmProvider);
     if (issue) {
@@ -459,145 +435,39 @@ export async function runVerify(prNumber: number, baseUrlOverride: string | null
     const reasoner = createReasoner(env);
     startRun(`verify-${prNumber}`, { pr: prNumber, kind: "verify", model: reasoner.modelLabel });
 
-    const meta = await getPrMeta(prNumber);
-    logger.info(`PR #${meta.number}: ${meta.title}`);
-    const changed = await getChangedFiles(prNumber);
-    const { routes } = adapter.affectedRoutes(changed);
-    logger.info(`Affected routes: ${routes.join(", ") || "(none — start at /home)"}`);
-
-    const graphFile = path.join(env.outputDir, adapter.id, "graph", "latest.json");
-    if (!fs.existsSync(graphFile)) {
-        throw new Error(`No interaction graph at ${graphFile}. Run \`sentinel crawl\` first.`);
-    }
-    const graph = loadGraph(graphFile);
-
-    logger.info(`Planning with ${reasoner.modelLabel} ...`);
-    const diff = await getPrDiff(prNumber, 6000);
-    const plan = await generatePlan(
-        reasoner,
-        { title: meta.title, body: meta.body, changedFiles: changed, affectedRoutes: routes, diffExcerpt: diff },
-        graph,
-    );
-    reportPlan(plan);
-
-    const runDir = path.join(env.outputDir, adapter.id, "verify-runs", `${prNumber}-${stamp()}`);
-    fs.mkdirSync(runDir, { recursive: true });
-    fs.writeFileSync(path.join(runDir, "plan.json"), JSON.stringify(plan, null, 2));
     if (planOnly) {
+        const { runDir } = await planForProject({ adapter, repo, prNumber, reasoner, env, outputDir: env.outputDir });
         logger.success(`Plan written -> ${path.join(runDir, "plan.json")}`);
         await reportRunCost();
         return;
     }
 
     let targetUrl = baseUrlOverride;
-    if (!targetUrl) {
-        const repo = await detectRepo();
-        if (repo) {
-            targetUrl = await resolveWebPreviewUrl(repo, meta.headSha, adapter.previewEnvIncludes);
-        }
+    if (!targetUrl && repo) {
+        const meta = await getPrMeta(prNumber, repo);
+        targetUrl = await resolveWebPreviewUrl(repo, meta.headSha, adapter.previewEnvIncludes);
     }
     if (!targetUrl) {
         throw new Error(
             `Could not resolve a web preview for PR #${prNumber}. Pass --base-url, or ensure a ready 'Preview – web' deployment.`,
         );
     }
-    logger.info(`Target: ${targetUrl}`);
 
-    const preflight = await runProductionPreflight(getAdapter({ baseUrl: targetUrl }), env.allowProdWrites);
-    await ensureAppReachable(targetUrl);
-
-    const screenshotDir = path.join(runDir, "screenshots");
-    fs.mkdirSync(screenshotDir, { recursive: true });
-    const safety: SafetyConfig = { ...adapter.safety, readOnly: preflight.effectiveReadOnly };
-    const session = await createSession({
-        baseUrl: targetUrl,
-        headless: env.headless,
-        safety,
-        videoDir: path.join(runDir, "video"),
-    });
-
-    let videoPath: string | null = null;
-    let results: StepResult[] = [];
-    let verdict: Verdict = { outcome: "uncertain", confidence: "low", summary: "Not executed.", evidence: [] };
-    try {
-        logger.info("Authenticating ...");
-        await performLogin(session.page, adapter.auth, credentials, { timeoutMs: env.loginTimeoutMs });
-        logger.success("Authenticated. Executing the plan ...");
-        if (plan.startRoute) {
-            await session.page
-                .goto(plan.startRoute, { waitUntil: "domcontentloaded", timeout: env.loginTimeoutMs })
-                .catch(() => {});
-        }
-        results = await executePlan(session, plan, {
-            reasoner,
-            destructive: adapter.safety.destructiveControlPatterns.map((p) => new RegExp(p, "i")),
-            settleMs: 6000,
-            navTimeoutMs: env.loginTimeoutMs,
-            clickTimeoutMs: 8000,
-            screenshotDir,
-            pacing: pacingFromEnv(env),
-            loginPath: adapter.auth.loginPath,
-        });
-        logger.info("Judging ...");
-        verdict = await judgeVerdict(reasoner, meta.title, meta.body, plan, results);
-    } finally {
-        videoPath = await closeQuietly(session.close);
-    }
-
-    const manifest: VerifyManifest = {
-        pr: meta.number,
-        title: meta.title,
-        body: meta.body,
-        headSha: meta.headSha,
-        headRef: meta.headRef,
+    // A target-scoped adapter so the preflight's prod detection runs against the real target.
+    const result = await runVerifyForProject({
+        adapter: getAdapter({ baseUrl: targetUrl }),
+        repo,
+        prNumber,
         targetUrl,
-        changedFiles: changed,
-        affectedRoutes: routes,
-        readOnly: preflight.effectiveReadOnly,
-        blockedWrites: session.blocked.filter((b) => b.reason === "mutation").length,
-        model: reasoner.modelLabel,
-        plan,
-        results,
-        verdict,
-        video: videoPath,
-        createdAt: new Date().toISOString(),
-    };
-    fs.writeFileSync(path.join(runDir, "manifest.json"), redactSecret(JSON.stringify(manifest, null, 2)));
-    reportVerify(manifest, runDir);
-    reportBlocked(session.blocked);
-    await reportRunCost();
-}
-
-function reportPlan(plan: TestPlan): void {
-    logger.success(`Plan: ${plan.goal}`);
-    logger.info(`Start: ${plan.startRoute}`);
-    plan.steps.forEach((step, i) => {
-        const value = step.value ? ` = "${step.value}"` : "";
-        logger.info(`  ${i + 1}. ${step.action} "${step.target}"${value}  → expect: ${step.expect}`);
+        reasoner,
+        env,
+        outputDir: env.outputDir,
+        // CLI parity: env.allowProdWrites preserves the local-dev write path. The server always passes false.
+        allowProdWrites: env.allowProdWrites,
     });
-    for (const note of plan.notes) {
-        logger.warn(`  note: ${note}`);
-    }
-}
-
-function reportVerify(manifest: VerifyManifest, runDir: string): void {
-    const ok = manifest.results.filter((r) => r.status === "ok").length;
-    const failed = manifest.results.filter((r) => r.status === "failed").length;
-    const blocked = manifest.results.filter((r) => r.status === "blocked").length;
-    logger.info(`Steps: ${ok} ok, ${failed} failed, ${blocked} blocked (read-only).`);
-    const v = manifest.verdict;
-    const line = `VERDICT: ${v.outcome.toUpperCase()} (${v.confidence}) — ${v.summary}`;
-    if (v.outcome === "pass") {
-        logger.success(line);
-    } else if (v.outcome === "fail") {
-        logger.error(line);
-    } else {
-        logger.warn(line);
-    }
-    for (const e of v.evidence) {
-        logger.info(`  • ${e}`);
-    }
-    logger.success(`Plan + per-step screenshots + video + manifest in ${runDir}`);
+    reportBlocked(result.blocked);
+    logger.success(`Plan + per-step screenshots + video + manifest in ${result.runDir}`);
+    await reportRunCost();
 }
 
 /** Run the login, and on failure capture a screenshot + page title/url so the failure is never a mystery. */
