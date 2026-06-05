@@ -13,6 +13,7 @@
     "sitemap": "tsx src/cli.ts sitemap",
     "pr": "tsx src/cli.ts pr",
     "verify": "tsx src/cli.ts verify",
+    "ui": "tsx src/server/main.ts",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "lint": "biome check src",

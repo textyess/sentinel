@@ -3,6 +3,9 @@
  * later phases import the engine from here rather than reaching into core/ paths.
  */
 export { createTextyessAdapter, getAdapter } from "./adapters";
+export type { GenericAuthConfig, GenericProjectConfig } from "./adapters/generic";
+export { createGenericAdapter, GENERIC_SAFETY_DEFAULTS } from "./adapters/generic";
+export { adapterForProject } from "./adapters/registry";
 export type { LoginResult } from "./core/auth/login";
 export { performLogin } from "./core/auth/login";
 export { ensureAppReachable } from "./core/bringup/app";
@@ -11,10 +14,13 @@ export { createSession } from "./core/browser/driver";
 export { clickBySelectors, fillBySelectors } from "./core/browser/interact";
 export type { EnvConfig } from "./core/config";
 export { loadEnvConfig, PACKAGE_ROOT, REPO_ROOT } from "./core/config";
+export { applyEnvVar, EnvFileWriteError, encodeEnvValue, writeEnvFileVar } from "./core/config/env-file";
 export type { ActuateOptions, DiscoveredLink } from "./core/crawler/actuate";
 export { actuateForDiscovery } from "./core/crawler/actuate";
 export type { CrawlOptions } from "./core/crawler/crawler";
 export { crawl } from "./core/crawler/crawler";
+export type { RunCrawlArgs, RunCrawlResult } from "./core/crawler/run";
+export { runCrawlForProject } from "./core/crawler/run";
 export { extractControls, stateSignature } from "./core/graph/extract";
 export type { SavedGraph } from "./core/graph/store";
 export { currentGitSha, graphScreenshotDir, loadGraph, saveGraph } from "./core/graph/store";
@@ -29,9 +35,21 @@ export type {
 } from "./core/graph/types";
 export { normalizePath, resolveInternalPath } from "./core/graph/url";
 export { humanDwell, type PacingOptions, thinkPause } from "./core/human/pacing";
-export { logger } from "./core/logger";
-export type { PrMeta } from "./core/pr/github";
-export { detectRepo, getChangedFiles, getPrMeta, resolveWebPreviewUrl } from "./core/pr/github";
+export type { LogLine } from "./core/logger";
+export { addProgressSink, logger, runWithProgress } from "./core/logger";
+export type { RunTotals } from "./core/observability/langfuse";
+export { endRun, runTotals, startRun } from "./core/observability/langfuse";
+export type { IssueComment, PrMeta } from "./core/pr/github";
+export {
+    detectRepo,
+    getChangedFiles,
+    getPrDiff,
+    getPrMeta,
+    isGhAuthenticated,
+    listIssueComments,
+    postPrComment,
+    resolveWebPreviewUrl,
+} from "./core/pr/github";
 export type { ReplayOptions } from "./core/pr/replay";
 export { replayFlows, selectFlows } from "./core/pr/replay";
 export type { FlowResult, PrRunManifest } from "./core/pr/types";
@@ -57,5 +75,7 @@ export type { ExecuteOptions } from "./core/verify/execute";
 export { executePlan, judgeVerdict } from "./core/verify/execute";
 export type { PlanContext } from "./core/verify/plan";
 export { generatePlan } from "./core/verify/plan";
+export type { PlanArgs, PlanResult, RunVerifyArgs, RunVerifyResult } from "./core/verify/run";
+export { planForProject, runVerifyForProject } from "./core/verify/run";
 export type { PlanStep, StepResult, TestPlan, Verdict, VerifyManifest } from "./core/verify/types";
 export { SENTINEL } from "./persona";

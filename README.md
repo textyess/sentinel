@@ -49,11 +49,26 @@ pnpm pr <N>
 # Phase 3: plan a browser test for a PR, run it on the preview, record + judge.
 pnpm verify <N>          # add --plan-only to just generate the to-do plan
 
+# Dashboard: a local UI to register repos, watch live runs, and browse the video
+# gallery. Tag Sentinel (e.g. "@sentinel") on a PR and it records a run + posts a
+# verdict back. Opens on http://127.0.0.1:4317.
+pnpm ui
+
 # Typecheck.
 pnpm typecheck
 ```
 
 Artifacts (videos, screenshots, the interaction graph, run manifests) land in `.sentinel/` (gitignored).
+
+## Dashboard
+
+`pnpm ui` starts a local, read-only dashboard (no extra dependencies — `node:http` + SSE):
+
+- **Register a project** — a GitHub repo (`owner/name`) with either the built-in TextYess adapter or a generic adapter you configure in the form (login recipe, preview-env hint, and the *names* of the env vars holding its test credentials — secrets are never stored, only referenced).
+- **Tag to trigger** — the server polls registered repos for PR comments that `@`-mention Sentinel. On a mention it resolves the PR's preview deployment, walks the affected flows in a recorded browser, judges `pass / fail / uncertain`, and posts the verdict back as a comment (with a hidden marker so it never replies to itself).
+- **Watch + gallery** — live progress streams over SSE while a run is in flight; finished runs land in a video gallery, each linked to its PR and verdict.
+
+Every dashboard run is forced read-only and goes through the same production preflight + network guard as the CLI. It targets repos that publish PR **preview deployments** and already have a baseline interaction graph (`pnpm crawl`); a project missing either is flagged in the UI, and Sentinel replies that it needs a baseline crawl rather than failing silently.
 
 ## Safety model
 
