@@ -91,4 +91,12 @@ export interface ServerConfig {
     pollMs: number;
     maxConcurrent: number;
     maxPreviewRetries: number;
+    /**
+     * Where run recordings are hosted so the PR comment can link them. "releases"
+     * uploads each recording as a release asset (GitHub blob storage, never committed)
+     * and links it; "off" keeps recordings local-only (dashboard link only).
+     */
+    videoPublish: "off" | "releases";
+    /** Release tag used as the artifact bucket when videoPublish === "releases". */
+    videoReleaseTag: string;
 }

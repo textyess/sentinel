@@ -210,3 +210,63 @@ export async function postPrComment(repo: string, prNumber: number, body: string
         fs.rmSync(tmpFile, { force: true });
     }
 }
+
+/**
+ * Publish a file as a release asset under a dedicated tag, creating the holding
+ * release on first use (idempotent — an existing tag is reused). Returns the asset's
+ * browser download URL. The asset is NOT committed to git: release assets live in
+ * GitHub's per-repo blob storage, so this never touches the source tree or history.
+ * For private/internal repos the URL is auth-gated, so only users with repo access
+ * (i.e. the PR's reviewers) can open it. `repo` is REQUIRED.
+ *
+ * gh derives the asset name from the file's basename, so the source is copied to a
+ * temp file named `assetName` first; `--clobber` overwrites a same-named asset, so a
+ * re-run of the same PR replaces its recording rather than erroring.
+ */
+export async function uploadReleaseAsset(
+    repo: string,
+    tag: string,
+    filePath: string,
+    assetName: string,
+): Promise<string> {
+    if (!repo) {
+        throw new Error("uploadReleaseAsset requires an explicit repo (owner/name).");
+    }
+    try {
+        await gh(["release", "view", tag, "-R", repo]);
+    } catch {
+        // First use: create the artifact bucket. --latest=false keeps it off the
+        // repo's "Latest release" badge — it's a holding area, not a software release.
+        await gh([
+            "release",
+            "create",
+            tag,
+            "-R",
+            repo,
+            "--title",
+            "Sentinel QA artifacts",
+            "--notes",
+            "Run recordings uploaded automatically by Sentinel. Not a software release.",
+            "--latest=false",
+        ]);
+    }
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sentinel-asset-"));
+    const uploadPath = path.join(tmpDir, assetName);
+    try {
+        fs.copyFileSync(filePath, uploadPath);
+        await gh(["release", "upload", tag, uploadPath, "-R", repo, "--clobber"]);
+    } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+
+    // Read the asset's URL back rather than constructing it, so any server-side name
+    // normalization is reflected exactly.
+    const out = await gh(["release", "view", tag, "-R", repo, "--json", "assets"]);
+    const parsed = JSON.parse(out) as { assets?: Array<{ name: string; url: string }> };
+    const asset = (parsed.assets ?? []).find((a) => a.name === assetName);
+    if (!asset) {
+        throw new Error(`Uploaded asset ${assetName} not found in release ${tag}.`);
+    }
+    return asset.url;
+}
