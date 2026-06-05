@@ -49,6 +49,7 @@ export {
     listIssueComments,
     postPrComment,
     resolveWebPreviewUrl,
+    uploadReleaseAsset,
 } from "./core/pr/github";
 export type { ReplayOptions } from "./core/pr/replay";
 export { replayFlows, selectFlows } from "./core/pr/replay";

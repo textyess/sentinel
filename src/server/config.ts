@@ -16,6 +16,10 @@ export function loadServerConfig(): ServerConfig {
         // is process-global, so concurrent runs would cross-contaminate it.
         maxConcurrent: numEnv(process.env.SENTINEL_MAX_CONCURRENT, 1),
         maxPreviewRetries: numEnv(process.env.SENTINEL_MAX_PREVIEW_RETRIES, 10),
+        // On by default: recordings are published so reviewers can watch them from the
+        // PR comment. Set SENTINEL_VIDEO_PUBLISH=off to keep recordings local-only.
+        videoPublish: process.env.SENTINEL_VIDEO_PUBLISH === "off" ? "off" : "releases",
+        videoReleaseTag: process.env.SENTINEL_VIDEO_RELEASE_TAG?.trim() || "sentinel-artifacts",
     };
 }
 
