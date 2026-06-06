@@ -1,4 +1,26 @@
-import type { Page } from "playwright";
+import type { Locator, Page } from "playwright";
+import { glide, isCursorActive } from "./cursor";
+
+/**
+ * Move the visible cursor to a locator's centre before acting on it, so a recorded
+ * run shows the pointer travelling to the control rather than the click appearing
+ * from nowhere. No-op (and zero extra round-trips) when the run isn't recorded, and
+ * never throws — positioning the cursor is cosmetic; the real interaction follows.
+ */
+export async function moveCursorToLocator(page: Page, locator: Locator, timeoutMs: number): Promise<void> {
+    if (!isCursorActive(page)) {
+        return;
+    }
+    try {
+        await locator.scrollIntoViewIfNeeded({ timeout: timeoutMs });
+        const box = await locator.boundingBox({ timeout: timeoutMs });
+        if (box) {
+            await glide(page, box.x + box.width / 2, box.y + box.height / 2);
+        }
+    } catch {
+        // The cursor is decorative; if it can't be positioned, the action below still runs.
+    }
+}
 
 /** Click the first ranked selector that resolves to exactly one element (no ambiguous clicks). */
 export async function clickBySelectors(page: Page, selectors: string[], timeoutMs: number): Promise<boolean> {
@@ -8,6 +30,7 @@ export async function clickBySelectors(page: Page, selectors: string[], timeoutM
             if ((await locator.count()) !== 1) {
                 continue;
             }
+            await moveCursorToLocator(page, locator, timeoutMs);
             await locator.click({ timeout: timeoutMs });
             return true;
         } catch {
@@ -30,6 +53,7 @@ export async function fillBySelectors(
             if ((await locator.count()) !== 1) {
                 continue;
             }
+            await moveCursorToLocator(page, locator, timeoutMs);
             await locator.fill(value, { timeout: timeoutMs });
             return true;
         } catch {

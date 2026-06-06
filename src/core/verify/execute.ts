@@ -3,7 +3,7 @@ import * as path from "node:path";
 import type { Page } from "playwright";
 import { z } from "zod";
 import type { DriverSession } from "../browser/driver";
-import { clickBySelectors, fillBySelectors } from "../browser/interact";
+import { clickBySelectors, fillBySelectors, moveCursorToLocator } from "../browser/interact";
 import { dismissOverlays, extractControls, waitForInteractive } from "../graph/extract";
 import type { ControlRef, InteractionGraph } from "../graph/types";
 import { stripQuery } from "../graph/url";
@@ -87,6 +87,7 @@ async function hoverFirst(page: Page, selectors: string[], timeoutMs: number): P
             if ((await locator.count()) !== 1) {
                 continue;
             }
+            await moveCursorToLocator(page, locator, timeoutMs);
             await locator.hover({ timeout: timeoutMs });
             return true;
         } catch {
