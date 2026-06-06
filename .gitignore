@@ -11,3 +11,8 @@ dist/
 *.tsbuildinfo
 node_modules/
 .DS_Store
+
+# Lock files
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
