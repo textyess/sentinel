@@ -5,6 +5,7 @@ import type {
     Health,
     ProjectRecord,
     ProjectView,
+    RunManifestView,
     RunSummary,
     TriggerResult,
 } from "./types";
@@ -64,6 +65,7 @@ export const api = {
         request<TriggerResult>("/api/autodetect", { method: "POST", body: JSON.stringify(body) }),
 
     runs: () => request<RunSummary[]>("/api/runs"),
+    runManifest: (runId: string) => request<RunManifestView>(`/api/runs/${encodeURIComponent(runId)}/manifest`),
     deleteRun: (runId: string) => request<{ ok: true }>(`/api/runs/${encodeURIComponent(runId)}`, { method: "DELETE" }),
 
     env: () => request<EnvPresence>("/api/env"),

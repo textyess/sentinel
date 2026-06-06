@@ -1,5 +1,5 @@
-import { Kind, OperationTypeNode, parse } from "graphql";
 import type { DocumentNode, OperationDefinitionNode } from "graphql";
+import { Kind, OperationTypeNode, parse } from "graphql";
 import type { BrowserContext, Request } from "playwright";
 import type { BlockedRequest, SafetyConfig } from "../types";
 

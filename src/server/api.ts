@@ -2,9 +2,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { z } from "zod";
 import type { GenericProjectConfig } from "../adapters/generic";
+import type { StepResult, VerifyManifest } from "../index";
 import { adapterKinds, isAdapterKind, isGhAuthenticated, llmCredentialIssue, loadEnvConfig } from "../index";
 import { HttpError } from "./errors";
-import { indexRuns, resolveRunArtifacts } from "./indexer";
+import { assertWithin } from "./files";
+import { indexRuns, resolveRunArtifacts, screenshotUrl, statusFromOutcome, videoUrl } from "./indexer";
 import { credEnvNames, slug } from "./naming";
 import { isPollerRunning } from "./poller";
 import {
@@ -16,7 +18,7 @@ import {
     triggerRunInBackground,
 } from "./runner";
 import { getProject, listProjects, listRunRecords, removeProject, removeRunRecord, upsertProject } from "./store";
-import type { ProjectRecord, RunRecord, RunSummary } from "./types";
+import type { ProjectRecord, RunManifestView, RunRecord, RunSummary, StepResultView } from "./types";
 
 /** A RegExpSource that the core will compile with `new RegExp(...)` — reject one that can't. */
 function isCompilableRegex(source: string): boolean {
@@ -239,6 +241,65 @@ export async function getRuns(): Promise<RunSummary[]> {
 
 export async function getRun(runId: string): Promise<RunRecord | null> {
     return (await listRunRecords()).find((r) => r.runId === runId) ?? null;
+}
+
+function toStepResultView(runId: string, r: StepResult): StepResultView {
+    return {
+        index: r.index,
+        step: r.step,
+        status: r.status,
+        observation: r.observation,
+        screenshotUrl: r.screenshot ? screenshotUrl(runId, r.screenshot) : null,
+        consoleErrors: r.consoleErrors,
+        networkErrors: r.networkErrors,
+    };
+}
+
+/**
+ * The full report for one verify run: its plan, per-step results, verdict, and video,
+ * read from the on-disk manifest and sanitized for the browser (no absolute paths).
+ * Returns null when the run has no manifest yet (still running, crawl/autodetect, or unknown).
+ */
+export async function getRunManifest(runId: string): Promise<RunManifestView | null> {
+    const artifacts = await resolveRunArtifacts(runId);
+    if (!artifacts?.manifestPath) {
+        return null;
+    }
+    // An id must never address a file outside the run output dir.
+    const safe = assertWithin(loadEnvConfig().outputDir, artifacts.manifestPath);
+    let manifest: VerifyManifest;
+    try {
+        manifest = JSON.parse(await fs.promises.readFile(safe, "utf8")) as VerifyManifest;
+    } catch {
+        return null;
+    }
+    // The RunRecord (when present) is authoritative for repo/project/live status; a
+    // manifest-only (CLI) run is keyed `<adapterId>__<dirName>`, so fall back to that.
+    const record = (await listRunRecords()).find((r) => r.runId === runId) ?? null;
+    const sep = runId.indexOf("__");
+    const adapterId = sep > 0 ? runId.slice(0, sep) : (record?.projectId ?? runId);
+    return {
+        runId,
+        projectId: record?.projectId ?? adapterId,
+        repo: record?.repo ?? adapterId,
+        pr: manifest.pr,
+        title: manifest.title,
+        body: manifest.body,
+        headSha: manifest.headSha,
+        headRef: manifest.headRef,
+        targetUrl: manifest.targetUrl,
+        changedFiles: manifest.changedFiles,
+        affectedRoutes: manifest.affectedRoutes,
+        readOnly: manifest.readOnly,
+        blockedWrites: manifest.blockedWrites,
+        model: manifest.model,
+        plan: manifest.plan,
+        results: manifest.results.map((r) => toStepResultView(runId, r)),
+        verdict: manifest.verdict,
+        videoUrl: videoUrl(runId, Boolean(manifest.video)),
+        createdAt: manifest.createdAt,
+        status: record?.status ?? statusFromOutcome(manifest.verdict.outcome),
+    };
 }
 
 /** Remove a run from the gallery: drop its RunRecord and delete its on-disk artifacts (if any). */

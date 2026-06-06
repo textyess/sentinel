@@ -34,6 +34,18 @@ export function useRuns() {
     });
 }
 
+const TERMINAL_STATUS: ReadonlySet<string> = new Set(["passed", "failed", "uncertain", "blocked", "errored"]);
+
+export function useRunManifest(runId: string) {
+    return useQuery({
+        queryKey: [...keys.runs, runId, "manifest"] as const,
+        queryFn: () => api.runManifest(runId),
+        enabled: runId.length > 0,
+        // Keep polling while the run is still settling (or its report isn't on disk yet); stop once terminal.
+        refetchInterval: (query) => (query.state.data && TERMINAL_STATUS.has(query.state.data.status) ? false : 5_000),
+    });
+}
+
 export function useEnv(enabled: boolean) {
     return useQuery({ queryKey: keys.env, queryFn: api.env, enabled });
 }

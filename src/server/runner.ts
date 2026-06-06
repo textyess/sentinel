@@ -21,10 +21,9 @@ import {
     scanRepo,
     startRun,
     stripQuery,
-    uploadReleaseAsset,
 } from "../index";
 import { formatErrorComment, formatVerdictComment, postVerdict } from "./comment";
-import { dashboardUrl, loadServerConfig } from "./config";
+import { loadServerConfig, reportUrl } from "./config";
 import { credEnvNames, slug } from "./naming";
 import { singleton } from "./singleton";
 import { publishAutodetectDone, publishCrawlDone, publishDone, publishError } from "./sse";
@@ -250,32 +249,14 @@ export async function runProject(
 
                 const videoUrl = manifest.video ? `/api/runs/${encodeURIComponent(runId)}/video` : null;
                 if (triggerCommentId !== null) {
-                    // Publish the recording to GitHub (when enabled) so reviewers can watch
-                    // it straight from the comment. A failed upload degrades to the local-only
-                    // link — it must never block the verdict.
-                    let publishedVideoUrl: string | null = null;
-                    if (manifest.video && config.videoPublish === "releases") {
-                        try {
-                            publishedVideoUrl = await uploadReleaseAsset(
-                                repo,
-                                config.videoReleaseTag,
-                                manifest.video,
-                                `${runId}.webm`,
-                            );
-                        } catch (error) {
-                            logger.warn(`Could not publish recording for ${repo}#${prNumber}: ${msg(error)}`);
-                        }
-                    }
+                    // The comment is just a link to the run's report page — the verdict, plan,
+                    // results, and recording all live there. Set SENTINEL_DASHBOARD_URL so the
+                    // link resolves for reviewers (it defaults to the operator's local address).
                     try {
                         await postVerdict(
                             repo,
                             prNumber,
-                            formatVerdictComment(manifest, {
-                                runId,
-                                videoUrl,
-                                dashboardUrl: dashboardUrl(),
-                                publishedVideoUrl,
-                            }),
+                            formatVerdictComment(manifest, { runId, reportUrl: reportUrl(runId) }),
                         );
                     } catch (error) {
                         logger.warn(`Could not post verdict to ${repo}#${prNumber}: ${msg(error)}`);

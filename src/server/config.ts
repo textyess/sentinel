@@ -26,13 +26,20 @@ export function loadServerConfig(): ServerConfig {
     };
 }
 
+/**
+ * Base URL the dashboard is reachable at. Defaults to the local bind address, which is
+ * only resolvable on the operator's machine — set SENTINEL_DASHBOARD_URL to a publicly
+ * reachable origin (e.g. behind a proxy) so links posted to PRs work for reviewers too.
+ */
 export function dashboardUrl(): string {
-    // A hosted deploy can advertise its real dashboard URL (used for the "view run"
-    // link in PR comments); without it, fall back to the localhost address the
-    // operator reaches it on.
     const configured = process.env.SENTINEL_DASHBOARD_URL?.trim();
     if (configured) {
         return configured.replace(/\/+$/, "");
     }
     return `http://127.0.0.1:${loadServerConfig().port}`;
+}
+
+/** Absolute URL of a run's report page — its verdict, plan, step-by-step results, and recording. */
+export function reportUrl(runId: string): string {
+    return `${dashboardUrl()}/runs/${encodeURIComponent(runId)}`;
 }

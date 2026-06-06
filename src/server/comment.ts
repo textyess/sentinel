@@ -17,76 +17,21 @@ export function bodyHasMarker(body: string): boolean {
 
 export interface CommentContext {
     runId: string;
-    /** /api/runs/:runId/video, or null when no recording was produced. */
-    videoUrl: string | null;
-    /** e.g. http://127.0.0.1:4317 */
-    dashboardUrl: string;
-    /**
-     * GitHub-hosted URL of the recording when it was published (a release asset), or
-     * null when publishing is off or failed. Reviewers with repo access can open it.
-     */
-    publishedVideoUrl?: string | null;
+    /** Absolute URL of the run's report page — verdict, plan, step-by-step results, and recording. */
+    reportUrl: string;
 }
 
 /**
- * The "Recording" block. When the recording was published to GitHub, lead with a
- * link reviewers can actually open; otherwise fall back to the local-only dashboard
- * note (the video lives on the operator's machine and nobody else can reach it).
- */
-function recordingLines(ctx: CommentContext): string[] {
-    if (ctx.publishedVideoUrl) {
-        const lines = [
-            "**Recording**",
-            `▶ [Watch the recording](${ctx.publishedVideoUrl}) — the full read-only walk of the affected routes.`,
-        ];
-        if (ctx.videoUrl) {
-            lines.push(`_Operator copy: ${ctx.dashboardUrl}${ctx.videoUrl} (local-only)._`);
-        }
-        return lines;
-    }
-    if (ctx.videoUrl) {
-        return [
-            "**Recording**",
-            "Saved locally on the operator's machine — view it in the Sentinel dashboard:",
-            `${ctx.dashboardUrl}${ctx.videoUrl}  _(local-only)_`,
-        ];
-    }
-    return ["**Recording**", "No screen recording was produced for this run."];
-}
-
-/**
- * Build the verdict comment from STRUCTURED manifest fields only — the raw PR body
- * is never echoed back. The video lives on the operator's machine, so the comment
- * links to the local dashboard URL and says so plainly.
+ * The verdict comment is intentionally JUST a link to the run's report page: the
+ * verdict, the plan, the step-by-step results, and the recording all live there, so
+ * the PR thread stays a single clickable line instead of a wall of text. The trailing
+ * marker is an invisible HTML comment the poller uses to skip Sentinel's own comments
+ * (no reply-to-self loop) — it renders as nothing.
  */
 export function formatVerdictComment(m: VerifyManifest, ctx: CommentContext): string {
-    const routes = m.affectedRoutes.length > 0 ? m.affectedRoutes.join(", ") : "the affected area";
-    const evidence =
-        m.verdict.evidence.length > 0
-            ? m.verdict.evidence.map((e) => `- ${e}`).join("\n")
-            : "- (no specific evidence captured)";
-    const recording = recordingLines(ctx);
-
-    return [
-        `${SENTINEL.glyph} **${SENTINEL.name}** — verified PR #${m.pr} against the preview deployment`,
-        "",
-        `**Outcome: ${m.verdict.outcome.toUpperCase()}** (confidence: ${m.verdict.confidence})`,
-        "",
-        m.verdict.summary,
-        "",
-        "**What I checked**",
-        `- ${m.plan.goal}`,
-        `- Walked ${routes} — read-only; every mutating request was aborted (${m.blockedWrites} blocked).`,
-        "",
-        "**Evidence**",
-        evidence,
-        "",
-        ...recording,
-        "",
-        `_Run ${m.createdAt} · model ${m.model}_`,
-        "",
-        runMarker(ctx.runId),
-    ].join("\n");
+    return [`${SENTINEL.glyph} [Sentinel report for PR #${m.pr} →](${ctx.reportUrl})`, "", runMarker(ctx.runId)].join(
+        "\n",
+    );
 }
 
 export function formatErrorComment(reason: string, ctx: { runId: string }): string {
