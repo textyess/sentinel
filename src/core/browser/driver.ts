@@ -37,6 +37,22 @@ const LOGGED_RESOURCE_TYPES = new Set(["document", "xhr", "fetch"]);
 const CONSOLE_NOISE = /ResizeObserver loop|Non-Error promise rejection|extension:\/\//i;
 
 /**
+ * Extra Chromium launch flags, opt-in via SENTINEL_NO_SANDBOX. Chromium's setuid
+ * sandbox cannot run as root (the usual container case) and the container default
+ * /dev/shm is too small for it, so a self-hosted deploy sets this flag. It governs
+ * the browser's OWN process sandbox only — orthogonal to Sentinel's read-only
+ * network guard, which still intercepts every request — so the safety boundary is
+ * unchanged. Off by default, so local runs keep the full sandbox.
+ */
+function launchArgs(): string[] {
+    const flag = (process.env.SENTINEL_NO_SANDBOX ?? "").toLowerCase();
+    if (["1", "true", "yes", "on"].includes(flag)) {
+        return ["--no-sandbox", "--disable-dev-shm-usage"];
+    }
+    return [];
+}
+
+/**
  * The deterministic substrate every phase drives through: a fresh Chromium
  * context with the read-only guard installed, service workers blocked (so no
  * request escapes interception), video recording, network capture, and optional
@@ -44,7 +60,7 @@ const CONSOLE_NOISE = /ResizeObserver loop|Non-Error promise rejection|extension
  */
 export async function createSession(options: DriverOptions): Promise<DriverSession> {
     const viewport = options.viewport ?? DEFAULT_VIEWPORT;
-    const browser = await chromium.launch({ headless: options.headless });
+    const browser = await chromium.launch({ headless: options.headless, args: launchArgs() });
 
     try {
         const useStorageState =

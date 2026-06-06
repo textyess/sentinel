@@ -15,7 +15,7 @@ import { runProductionPreflight } from "../safety/production-guard";
 import { redactSecret } from "../safety/redact";
 import type { BlockedRequest, RepoAdapter } from "../types";
 import { executePlan, judgeVerdict } from "./execute";
-import { navigateLikeUser } from "./navigate";
+import { navigateLikeUser, toTargetPath } from "./navigate";
 import { generatePlan } from "./plan";
 import type { StepResult, TestPlan, Verdict, VerifyManifest } from "./types";
 
@@ -196,7 +196,7 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
         // whenever the interaction map allows (which, with a baseline crawl, is every
         // top-level route).
         if (plan.startRoute) {
-            const startPath = plan.startRoute.startsWith("/") ? plan.startRoute : `/${plan.startRoute}`;
+            const startPath = toTargetPath(plan.startRoute);
             await waitForInteractive(session.page, 6000).catch(() => {});
             const startOutcome = await navigateLikeUser(session.page, startPath, graph, {
                 destructive,

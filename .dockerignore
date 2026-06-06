@@ -1,0 +1,17 @@
+# Keep the build context small and never bake host state or secrets into the image.
+node_modules
+.next
+.sentinel
+dist
+.turbo
+*.tsbuildinfo
+.git
+.gitignore
+.env
+.env.local
+.context
+.DS_Store
+npm-debug.log*
+Dockerfile
+.dockerignore
+docker-compose.yml

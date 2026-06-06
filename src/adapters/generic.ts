@@ -163,6 +163,22 @@ function genericAffectedRoutes(
 }
 
 /**
+ * Authentication endpoints a read-only run must let through so the agent can log in.
+ * Matched against the URL PATH only (the guard tests pathnameOf(url)) and anchored to
+ * unambiguous auth verbs, so they permit the login handshake without widening the
+ * write-block to ordinary mutations — `/logout`, `/signup`, `/login-history` and the
+ * like do NOT match. Auto-detected, app-specific patterns layer on top of these.
+ */
+const DEFAULT_AUTH_MUTATION_PATTERNS = [
+    "(^|/)log[-_]?in(/|$)",
+    "(^|/)sign[-_]?in(/|$)",
+    "(^|/)sso(/|$)",
+    "(^|/)oauth(/|$)",
+    "(^|/)saml(/|$)",
+    "(^|/)auth/(session|token|refresh|callback|verify)(/|$)",
+];
+
+/**
  * Build a full {@link RepoAdapter} for a registered project. `overrides.baseUrl`
  * is the resolved preview URL for a given run (registration stores no URL — the
  * URL is always the PR's preview deployment).
@@ -180,15 +196,22 @@ export function createGenericAdapter(
         readOnly: true,
         // A public (no-login) app has no auth POST to permit — never allow a write
         // through the read-only guard for it, regardless of how the config was persisted.
-        allowedMutationPatterns: authRequired ? config.allowedMutationPatterns : [],
+        // For an auth-gated app the login handshake must get through: the default auth
+        // endpoints plus whatever auto-detect captured for this project.
+        allowedMutationPatterns: authRequired
+            ? [...DEFAULT_AUTH_MUTATION_PATTERNS, ...config.allowedMutationPatterns]
+            : [],
         telemetryPatterns: GENERIC_SAFETY_DEFAULTS.telemetryPatterns,
         destructiveControlPatterns:
             config.destructiveControlPatterns ?? GENERIC_SAFETY_DEFAULTS.destructiveControlPatterns,
         productionMarkers: config.productionMarkers ?? GENERIC_SAFETY_DEFAULTS.productionMarkers,
         failClosedOnProduction: GENERIC_SAFETY_DEFAULTS.failClosedOnProduction,
     };
-    const email = process.env[config.emailEnv];
-    const password = process.env[config.passwordEnv];
+    // Per-project credentials (SENTINEL_<repo>_EMAIL/PASSWORD) win; fall back to the
+    // generic SENTINEL_EMAIL/PASSWORD so a single-app user configures one pair instead
+    // of duplicating the same login under a per-repo name.
+    const email = process.env[config.emailEnv] || process.env.SENTINEL_EMAIL;
+    const password = process.env[config.passwordEnv] || process.env.SENTINEL_PASSWORD;
 
     return {
         id,
