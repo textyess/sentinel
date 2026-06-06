@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono, Shantell_Sans } from "next/font/google";
+import { Inter, JetBrains_Mono } from "next/font/google";
 import type { ReactNode } from "react";
 import { Providers } from "./providers";
 import "./globals.css";
@@ -8,12 +8,6 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "sw
 const jetbrainsMono = JetBrains_Mono({
     subsets: ["latin"],
     variable: "--font-jetbrains-mono",
-    display: "swap",
-});
-// Brand wordmark — a casual marker hand that matches the drawn eye (font-hand utility).
-const shantellSans = Shantell_Sans({
-    subsets: ["latin"],
-    variable: "--font-shantell",
     display: "swap",
 });
 
@@ -41,10 +35,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
     return (
-        <html
-            lang="en"
-            suppressHydrationWarning
-            className={`${inter.variable} ${jetbrainsMono.variable} ${shantellSans.variable}`}>
+        <html lang="en" suppressHydrationWarning className={`${inter.variable} ${jetbrainsMono.variable}`}>
             <body>
                 <Providers>{children}</Providers>
             </body>

@@ -116,8 +116,6 @@
 
     --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
     --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", Menlo, monospace;
-    /* Brand wordmark — a casual marker hand that matches the drawn eye. */
-    --font-hand: var(--font-shantell), ui-rounded, system-ui, sans-serif;
 
     --radius-sm: calc(var(--radius) - 4px);
     --radius-md: calc(var(--radius) - 2px);

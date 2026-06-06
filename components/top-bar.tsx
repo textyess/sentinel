@@ -11,7 +11,7 @@ export function TopBar({ onOpenSettings, onNewProject }: { onOpenSettings: () =>
                 <div className="flex items-center gap-2.5">
                     <EyeMark size={44} className="shrink-0" />
                     <div className="leading-tight">
-                        <h1 className="font-hand text-xl font-bold leading-none tracking-tight">Sentinel</h1>
+                        <h1 className="text-xl font-semibold leading-none tracking-tight">Sentinel</h1>
                         <p className="mt-0.5 hidden text-xs text-muted-foreground sm:block">
                             Learns your app, then watches your PRs
                         </p>
