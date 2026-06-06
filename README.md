@@ -64,7 +64,7 @@ Artifacts (videos, screenshots, the interaction graph, run manifests) land in `.
 
 `pnpm ui` starts a local, read-only dashboard (no extra dependencies — `node:http` + SSE):
 
-- **Register a project** — a GitHub repo (`owner/name`) with either the built-in TextYess adapter or a generic adapter you configure in the form (login recipe, preview-env hint, and the *names* of the env vars holding its test credentials — secrets are never stored, only referenced).
+- **Register a project** — a GitHub repo (`owner/name`) with a generic adapter you configure in the form (login recipe, preview-env hint, and the *names* of the env vars holding its test credentials — secrets are never stored, only referenced). First-party apps with fixed, in-code knowledge can ship a built-in adapter instead (see `src/adapters/example.ts`).
 - **Tag to trigger** — the server polls registered repos for PR comments that `@`-mention Sentinel. On a mention it resolves the PR's preview deployment, walks the affected flows in a recorded browser, judges `pass / fail / uncertain`, and posts the verdict back as a comment (with a hidden marker so it never replies to itself).
 - **Watch + gallery** — live progress streams over SSE while a run is in flight; finished runs land in a video gallery, each linked to its PR and verdict.
 

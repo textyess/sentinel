@@ -1,7 +1,7 @@
 {
-  "name": "@textyess/sentinel",
+  "name": "sentinel-qa-agent",
   "version": "0.0.1",
-  "private": true,
+  "license": "MIT",
   "description": "Sentinel — an autonomous, persona-driven browser agent that learns the app and tests PRs with video evidence. Repo-agnostic core + per-repo adapters.",
   "type": "module",
   "scripts": {

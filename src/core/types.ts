@@ -1,9 +1,8 @@
 /**
  * Repo-agnostic contracts. The Sentinel core depends ONLY on these types.
- * Everything specific to a repository (TextYess ports, login labels, route
- * names, prod connection strings) lives in an adapter that satisfies
- * {@link RepoAdapter} — so adding a second repo is a new adapter file, not new
- * core code.
+ * Everything specific to a repository (ports, login labels, route names, prod
+ * connection strings) lives in an adapter that satisfies {@link RepoAdapter} —
+ * so adding a second repo is a new adapter file, not new core code.
  */
 
 /** A string that will be compiled into a RegExp (case-insensitive) by the core. */
@@ -73,7 +72,7 @@ export interface DatastoreTarget {
 }
 
 export interface RepoAdapter {
-    /** Stable id, used in output paths, e.g. "textyess". */
+    /** Stable id, used in output paths, e.g. "acme-web". */
     id: string;
     displayName: string;
     /** The web app Sentinel drives. */

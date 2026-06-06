@@ -7,6 +7,7 @@ import {
     createProject,
     deleteProject,
     deleteRun,
+    getAdapters,
     getHealth,
     getProjects,
     getRun,
@@ -177,6 +178,10 @@ async function handleApiJson(
 ): Promise<void> {
     if (method === "GET" && pathname === "/api/health") {
         sendJson(res, 200, await getHealth());
+        return;
+    }
+    if (method === "GET" && pathname === "/api/adapters") {
+        sendJson(res, 200, getAdapters());
         return;
     }
     if (method === "GET" && pathname === "/api/projects") {
