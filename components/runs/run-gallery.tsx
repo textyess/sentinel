@@ -33,8 +33,9 @@ export function RunGallery() {
                 <div>
                     <p className="font-medium">No runs yet</p>
                     <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-                        Tag Sentinel on a pull request, or hit <span className="font-medium text-foreground">Verify</span> on a
-                        project above. Each run records a video you can replay here.
+                        Tag Sentinel on a pull request, or hit{" "}
+                        <span className="font-medium text-foreground">Verify</span> on a project above. Each run records
+                        a video you can replay here.
                     </p>
                 </div>
             </div>

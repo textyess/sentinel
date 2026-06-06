@@ -3,13 +3,7 @@ import { HealthIndicator } from "@/components/health-indicator";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 
-export function TopBar({
-    onOpenSettings,
-    onNewProject,
-}: {
-    onOpenSettings: () => void;
-    onNewProject: () => void;
-}) {
+export function TopBar({ onOpenSettings, onNewProject }: { onOpenSettings: () => void; onNewProject: () => void }) {
     return (
         <header className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur-xl">
             <div className="mx-auto flex h-15 max-w-6xl items-center gap-3 px-4 sm:px-6">
@@ -33,8 +27,7 @@ export function TopBar({
                         size="icon"
                         className="text-muted-foreground"
                         onClick={onOpenSettings}
-                        aria-label="Settings"
-                    >
+                        aria-label="Settings">
                         <SettingsIcon className="size-4.5" />
                     </Button>
                     <Button size="sm" className="gap-1.5" onClick={onNewProject}>

@@ -7,9 +7,7 @@ function DropdownMenu({ ...props }: React.ComponentProps<typeof DropdownMenuPrim
     return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
 }
 
-function DropdownMenuTrigger({
-    ...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Trigger>) {
+function DropdownMenuTrigger({ ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Trigger>) {
     return <DropdownMenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props} />;
 }
 
@@ -70,8 +68,7 @@ function DropdownMenuCheckboxItem({
                 className,
             )}
             checked={checked}
-            {...props}
-        >
+            {...props}>
             <span className="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
                 <DropdownMenuPrimitive.ItemIndicator>
                     <CheckIcon className="size-4" />
@@ -97,10 +94,7 @@ function DropdownMenuLabel({
     );
 }
 
-function DropdownMenuSeparator({
-    className,
-    ...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Separator>) {
+function DropdownMenuSeparator({ className, ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Separator>) {
     return (
         <DropdownMenuPrimitive.Separator
             data-slot="dropdown-menu-separator"

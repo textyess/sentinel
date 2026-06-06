@@ -1,16 +1,13 @@
 import * as path from "node:path";
-import { fileResponse } from "@/src/server/files";
-import { errorResponse } from "@/src/server/respond";
-import { resolveRunArtifacts } from "@/src/server/indexer";
 import { loadEnvConfig } from "@/src/index";
+import { fileResponse } from "@/src/server/files";
+import { resolveRunArtifacts } from "@/src/server/indexer";
+import { errorResponse } from "@/src/server/respond";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(
-    req: Request,
-    ctx: { params: Promise<{ runId: string; name: string }> },
-): Promise<Response> {
+export async function GET(req: Request, ctx: { params: Promise<{ runId: string; name: string }> }): Promise<Response> {
     try {
         const { runId, name } = await ctx.params;
         const artifacts = await resolveRunArtifacts(runId);

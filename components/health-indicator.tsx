@@ -1,5 +1,5 @@
-import { useHealth } from "@/hooks/queries";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useHealth } from "@/hooks/queries";
 import { cn } from "@/lib/utils";
 
 interface Check {
@@ -37,8 +37,7 @@ export function HealthIndicator() {
                         tabIndex={0}
                         role="status"
                         aria-label="Server offline — can't reach the Sentinel server"
-                        className="inline-flex items-center gap-2 rounded-full border border-fail/30 bg-fail/10 px-2.5 py-1 text-xs font-medium text-fail outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
+                        className="inline-flex items-center gap-2 rounded-full border border-fail/30 bg-fail/10 px-2.5 py-1 text-xs font-medium text-fail outline-none focus-visible:ring-2 focus-visible:ring-ring">
                         <span className="size-2 rounded-full bg-fail" />
                         <span className="hidden sm:inline">Server offline</span>
                     </span>
@@ -78,8 +77,7 @@ export function HealthIndicator() {
                             tabIndex={0}
                             role="img"
                             aria-label={`${c.label}: ${c.ok ? "ok" : "failing"}`}
-                            className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                        >
+                            className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
                             <Dot ok={c.ok} warn={c.warn} />
                             <span className="hidden md:inline">{c.label}</span>
                         </span>

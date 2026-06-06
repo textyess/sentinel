@@ -59,8 +59,7 @@ export const api = {
         }),
 
     runs: () => request<RunSummary[]>("/api/runs"),
-    deleteRun: (runId: string) =>
-        request<{ ok: true }>(`/api/runs/${encodeURIComponent(runId)}`, { method: "DELETE" }),
+    deleteRun: (runId: string) => request<{ ok: true }>(`/api/runs/${encodeURIComponent(runId)}`, { method: "DELETE" }),
 
     env: () => request<EnvPresence>("/api/env"),
     updateEnv: (updates: Record<string, string>) =>

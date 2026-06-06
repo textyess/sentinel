@@ -3,14 +3,7 @@
 
 export type AdapterKind = "textyess" | "generic";
 
-export type RunStatus =
-    | "queued"
-    | "running"
-    | "passed"
-    | "failed"
-    | "uncertain"
-    | "blocked"
-    | "errored";
+export type RunStatus = "queued" | "running" | "passed" | "failed" | "uncertain" | "blocked" | "errored";
 
 export type Outcome = "pass" | "fail" | "uncertain";
 export type Confidence = "high" | "medium" | "low";

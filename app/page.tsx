@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { PlusIcon } from "lucide-react";
+import { useState } from "react";
 import { type ActiveRun, LiveRunSheet } from "@/components/live/live-run-sheet";
 import { ProjectList } from "@/components/projects/project-list";
 import { RegisterProjectDialog } from "@/components/projects/register-project-dialog";
@@ -50,8 +50,7 @@ export default function Page() {
                             variant="ghost"
                             size="sm"
                             className="gap-1.5 text-muted-foreground"
-                            onClick={() => setRegisterOpen(true)}
-                        >
+                            onClick={() => setRegisterOpen(true)}>
                             <PlusIcon className="size-4" />
                             Add
                         </Button>

@@ -13,13 +13,13 @@
     "sitemap": "tsx src/cli.ts sitemap",
     "pr": "tsx src/cli.ts pr",
     "verify": "tsx src/cli.ts verify",
-    "dev": "next dev -p 4317",
-    "ui": "next dev -p 4317",
+    "dev": "next dev -p ${SENTINEL_UI_PORT:-4317} -H 127.0.0.1",
+    "ui": "next dev -p ${SENTINEL_UI_PORT:-4317} -H 127.0.0.1",
     "build": "next build",
-    "start": "next start -p 4317",
+    "start": "next start -p ${SENTINEL_UI_PORT:-4317} -H 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check src",
-    "format": "biome check --write src",
+    "lint": "biome check src app components hooks lib instrumentation.ts next.config.ts",
+    "format": "biome check --write src app components hooks lib instrumentation.ts next.config.ts",
     "clean": "rm -rf .sentinel .turbo .next dist"
   },
   "dependencies": {

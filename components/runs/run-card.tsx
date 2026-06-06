@@ -1,8 +1,9 @@
-import { useState } from "react";
 import { FilmIcon, Loader2Icon, XIcon } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
     Dialog,
     DialogClose,
@@ -12,7 +13,6 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import { Card } from "@/components/ui/card";
 import { useDeleteRun } from "@/hooks/queries";
 import { ApiError } from "@/lib/api";
 import type { RunSummary } from "@/lib/types";
@@ -71,8 +71,7 @@ export function RunCard({ run }: { run: RunSummary }) {
                     size="icon"
                     onClick={() => setConfirmOpen(true)}
                     aria-label="Remove run"
-                    className="absolute top-1.5 right-1.5 size-7 bg-background/40 text-foreground/80 opacity-0 backdrop-blur-md transition group-hover:opacity-100 hover:bg-background/70 hover:text-fail"
-                >
+                    className="absolute top-1.5 right-1.5 size-7 bg-background/40 text-foreground/80 opacity-0 backdrop-blur-md transition group-hover:opacity-100 hover:bg-background/70 hover:text-fail">
                     <XIcon className="size-3.5" />
                 </Button>
             </div>
@@ -87,8 +86,7 @@ export function RunCard({ run }: { run: RunSummary }) {
                             href={`https://github.com/${run.repo}/pull/${run.pr}`}
                             target="_blank"
                             rel="noreferrer"
-                            className="shrink-0 text-xs font-medium text-primary hover:underline"
-                        >
+                            className="shrink-0 text-xs font-medium text-primary hover:underline">
                             #{run.pr} ↗
                         </a>
                     ) : (

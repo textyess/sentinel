@@ -1,18 +1,12 @@
-import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { CoverageCallout, VerdictCallout } from "@/components/live/verdict-callout";
+import { useEffect } from "react";
 import { PhaseStepper } from "@/components/live/phase-stepper";
 import { RunLog } from "@/components/live/run-log";
+import { CoverageCallout, VerdictCallout } from "@/components/live/verdict-callout";
 import { StatusBadge } from "@/components/status-badge";
-import {
-    Sheet,
-    SheetContent,
-    SheetDescription,
-    SheetHeader,
-    SheetTitle,
-} from "@/components/ui/sheet";
-import { useLiveRun } from "@/hooks/use-live-run";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { keys } from "@/hooks/queries";
+import { useLiveRun } from "@/hooks/use-live-run";
 import { activePhaseIndex, phasesFor } from "@/lib/phases";
 import type { RunKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -39,11 +33,7 @@ function HeaderStatus({
         return <StatusBadge status="passed" label="Complete" />;
     }
     if (outcome) {
-        return (
-            <StatusBadge
-                status={outcome === "pass" ? "passed" : outcome === "fail" ? "failed" : "uncertain"}
-            />
-        );
+        return <StatusBadge status={outcome === "pass" ? "passed" : outcome === "fail" ? "failed" : "uncertain"} />;
     }
     if (streaming) {
         return (
@@ -80,8 +70,7 @@ export function LiveRunSheet({
     const activeIndex = activePhaseIndex(phases, state.lines);
     const done = state.done;
 
-    const headerOutcome =
-        done && "verdict" in done ? done.verdict.outcome : done ? "complete" : null;
+    const headerOutcome = done && "verdict" in done ? done.verdict.outcome : done ? "complete" : null;
 
     return (
         <Sheet open={Boolean(activeRun)} onOpenChange={onOpenChange}>
@@ -96,8 +85,7 @@ export function LiveRunSheet({
                                         kind === "crawl"
                                             ? "border-border text-muted-foreground"
                                             : "border-primary/30 bg-primary/10 text-primary",
-                                    )}
-                                >
+                                    )}>
                                     {kind === "crawl" ? "Baseline crawl" : "PR verify"}
                                 </span>
                                 <HeaderStatus streaming={state.streaming} error={state.error} outcome={headerOutcome} />

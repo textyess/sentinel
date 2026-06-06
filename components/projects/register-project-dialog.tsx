@@ -116,10 +116,7 @@ export function RegisterProjectDialog({
                             />
                             <div className="grid gap-1.5">
                                 <Label htmlFor="adapterKind">Adapter</Label>
-                                <Select
-                                    value={adapterKind}
-                                    onValueChange={(v) => setAdapterKind(v as AdapterKind)}
-                                >
+                                <Select value={adapterKind} onValueChange={(v) => setAdapterKind(v as AdapterKind)}>
                                     <SelectTrigger id="adapterKind">
                                         <SelectValue />
                                     </SelectTrigger>
@@ -163,33 +160,26 @@ export function RegisterProjectDialog({
                                         defaultValue="/"
                                     />
                                     <Field label="Email field label" name="emailLabel" defaultValue="Email" />
-                                    <Field
-                                        label="Password field label"
-                                        name="passwordLabel"
-                                        defaultValue="Password"
-                                    />
+                                    <Field label="Password field label" name="passwordLabel" defaultValue="Password" />
                                     <Field
                                         label="Submit button pattern"
                                         name="submitNamePattern"
                                         defaultValue="log\s*in"
                                     />
-                                    <Field
-                                        label="Pages prefix"
-                                        name="pagesPrefix"
-                                        placeholder="app/ or src/pages/"
-                                    />
-                                    <Field
-                                        label="Email env var"
-                                        name="emailEnv"
-                                        placeholder="SENTINEL_PROJECT_EMAIL"
-                                    />
+                                    <Field label="Pages prefix" name="pagesPrefix" placeholder="app/ or src/pages/" />
+                                    <Field label="Email env var" name="emailEnv" placeholder="SENTINEL_PROJECT_EMAIL" />
                                     <Field
                                         label="Password env var"
                                         name="passwordEnv"
                                         placeholder="SENTINEL_PROJECT_PASSWORD"
                                     />
                                 </div>
-                                <Field label="Public routes" name="publicRoutes" defaultValue="/login" hint="comma-separated" />
+                                <Field
+                                    label="Public routes"
+                                    name="publicRoutes"
+                                    defaultValue="/login"
+                                    hint="comma-separated"
+                                />
                                 <Field
                                     label="Allowed mutation patterns"
                                     name="allowedMutationPatterns"

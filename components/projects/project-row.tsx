@@ -1,12 +1,5 @@
+import { ExternalLinkIcon, MoreHorizontalIcon, PlayIcon, RadarIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
 import { type FormEvent, useState } from "react";
-import {
-    ExternalLinkIcon,
-    MoreHorizontalIcon,
-    PlayIcon,
-    RadarIcon,
-    RefreshCwIcon,
-    Trash2Icon,
-} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,24 +21,28 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-    useCrawlProject,
-    useDeleteProject,
-    useUpdateBaseline,
-    useVerifyProject,
-} from "@/hooks/queries";
+import { useCrawlProject, useDeleteProject, useUpdateBaseline, useVerifyProject } from "@/hooks/queries";
 import { ApiError } from "@/lib/api";
 import type { ProjectView, RunKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-function ReadinessBadge({ ok, label, okText, warnText }: { ok: boolean; label: string; okText: string; warnText: string }) {
+function ReadinessBadge({
+    ok,
+    label,
+    okText,
+    warnText,
+}: {
+    ok: boolean;
+    label: string;
+    okText: string;
+    warnText: string;
+}) {
     return (
         <span
             className={cn(
                 "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium",
                 ok ? "border-pass/25 bg-pass/10 text-pass" : "border-uncertain/25 bg-uncertain/10 text-uncertain",
-            )}
-        >
+            )}>
             <span className={cn("size-1.5 rounded-full", ok ? "bg-pass" : "bg-uncertain")} />
             {label}: {ok ? okText : warnText}
         </span>
@@ -124,9 +121,16 @@ export function ProjectRow({
         <div className="group flex flex-wrap items-center gap-x-3 gap-y-3 rounded-xl border bg-card px-4 py-3.5 transition-colors hover:border-foreground/15">
             <Tooltip>
                 <TooltipTrigger asChild>
-                    <span className={cn("mt-1 size-2 shrink-0 self-start rounded-full", ready ? "bg-pass" : "bg-muted-foreground/40")} />
+                    <span
+                        className={cn(
+                            "mt-1 size-2 shrink-0 self-start rounded-full",
+                            ready ? "bg-pass" : "bg-muted-foreground/40",
+                        )}
+                    />
                 </TooltipTrigger>
-                <TooltipContent>{ready ? "Ready — auto-verify active" : "Auto-verify paused until baseline + credentials are set"}</TooltipContent>
+                <TooltipContent>
+                    {ready ? "Ready — auto-verify active" : "Auto-verify paused until baseline + credentials are set"}
+                </TooltipContent>
             </Tooltip>
 
             <div className="min-w-0 flex-1">
@@ -137,13 +141,13 @@ export function ProjectRow({
                         target="_blank"
                         rel="noreferrer"
                         className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
-                        aria-label="Open on GitHub"
-                    >
+                        aria-label="Open on GitHub">
                         <ExternalLinkIcon className="size-3.5" />
                     </a>
                 </div>
                 <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                    {project.adapterKind} · mentions <span className="font-mono">{project.mentionHandle}</span> · preview “{project.previewEnvIncludes}”
+                    {project.adapterKind} · mentions <span className="font-mono">{project.mentionHandle}</span> ·
+                    preview “{project.previewEnvIncludes}”
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     <ReadinessBadge ok={project.graphPresent} label="baseline" okText="ready" warnText="needs crawl" />
@@ -169,7 +173,11 @@ export function ProjectRow({
 
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="size-8 text-muted-foreground" aria-label="More actions">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 text-muted-foreground"
+                            aria-label="More actions">
                             <MoreHorizontalIcon className="size-4" />
                         </Button>
                     </DropdownMenuTrigger>

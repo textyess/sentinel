@@ -8,8 +8,8 @@ import {
     XCircleIcon,
 } from "lucide-react";
 import type { ComponentType } from "react";
-import { cn } from "@/lib/utils";
 import type { Outcome, RunStatus } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 type Visual = {
     label: string;
@@ -27,7 +27,12 @@ const STATUS: Record<RunStatus, Visual> = {
         icon: CircleHelpIcon,
         className: "text-uncertain border-uncertain/30 bg-uncertain/12",
     },
-    running: { label: "Running", icon: Loader2Icon, className: "text-running border-running/30 bg-running/12", spin: true },
+    running: {
+        label: "Running",
+        icon: Loader2Icon,
+        className: "text-running border-running/30 bg-running/12",
+        spin: true,
+    },
     queued: { label: "Queued", icon: ClockIcon, className: "text-running border-running/30 bg-running/12" },
     blocked: { label: "Blocked", icon: BanIcon, className: "text-blocked border-blocked/30 bg-blocked/12" },
     errored: { label: "Errored", icon: TriangleAlertIcon, className: "text-fail border-fail/30 bg-fail/12" },
@@ -57,8 +62,7 @@ export function StatusBadge({
                 "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium tracking-tight",
                 v.className,
                 className,
-            )}
-        >
+            )}>
             <Icon className={cn("size-3.5", v.spin && "animate-spin")} />
             {label ?? v.label}
         </span>

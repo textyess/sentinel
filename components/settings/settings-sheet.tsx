@@ -1,18 +1,11 @@
-import { type FormEvent, useState } from "react";
 import { Undo2Icon } from "lucide-react";
+import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-    Sheet,
-    SheetContent,
-    SheetDescription,
-    SheetFooter,
-    SheetHeader,
-    SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEnv, useUpdateEnv } from "@/hooks/queries";
 import { ApiError } from "@/lib/api";
@@ -25,7 +18,12 @@ type ConfigField =
 
 const CONFIG_FIELDS: ConfigField[] = [
     { key: "SENTINEL_BASE_URL", label: "Base URL", type: "url" },
-    { key: "SENTINEL_LLM_PROVIDER", label: "LLM provider", type: "select", options: ["anthropic", "openai", "bedrock"] },
+    {
+        key: "SENTINEL_LLM_PROVIDER",
+        label: "LLM provider",
+        type: "select",
+        options: ["anthropic", "openai", "bedrock"],
+    },
     { key: "SENTINEL_LLM_MODEL", label: "LLM model", type: "text" },
     { key: "AWS_REGION", label: "AWS region", type: "text" },
     { key: "SENTINEL_HEADLESS", label: "Headless browser", type: "select", options: ["true", "false"] },
@@ -100,7 +98,9 @@ function SettingsForm({ env, onClose }: { env: EnvPresence; onClose: () => void 
         <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
             <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-6">
                 <section className="grid gap-4">
-                    <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Configuration</h3>
+                    <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                        Configuration
+                    </h3>
                     <div className="grid gap-4 sm:grid-cols-2">
                         {CONFIG_FIELDS.map((field) => (
                             <div key={field.key} className="grid gap-1.5">
@@ -151,8 +151,7 @@ function SettingsForm({ env, onClose }: { env: EnvPresence; onClose: () => void 
                                                 isSet && !isCleared
                                                     ? "border-pass/30 bg-pass/10 text-pass"
                                                     : "border-border text-muted-foreground",
-                                            )}
-                                        >
+                                            )}>
                                             {isCleared ? "will clear" : isSet ? "set" : "unset"}
                                         </span>
                                     </div>
@@ -180,8 +179,7 @@ function SettingsForm({ env, onClose }: { env: EnvPresence; onClose: () => void 
                                                     size="icon"
                                                     className="shrink-0 text-muted-foreground"
                                                     onClick={() => toggleClear(field.key, false)}
-                                                    aria-label="Undo clear"
-                                                >
+                                                    aria-label="Undo clear">
                                                     <Undo2Icon className="size-4" />
                                                 </Button>
                                             ) : (
@@ -190,8 +188,7 @@ function SettingsForm({ env, onClose }: { env: EnvPresence; onClose: () => void 
                                                     variant="ghost"
                                                     size="sm"
                                                     className="shrink-0 text-muted-foreground hover:text-fail"
-                                                    onClick={() => toggleClear(field.key, true)}
-                                                >
+                                                    onClick={() => toggleClear(field.key, true)}>
                                                     Clear
                                                 </Button>
                                             ))}
@@ -223,7 +220,9 @@ export function SettingsSheet({ open, onOpenChange }: { open: boolean; onOpenCha
             <SheetContent side="right" className="w-full gap-0 sm:max-w-lg">
                 <SheetHeader className="border-b">
                     <SheetTitle>Settings</SheetTitle>
-                    <SheetDescription>Applied to the running agent and saved to .env (also used by the CLI).</SheetDescription>
+                    <SheetDescription>
+                        Applied to the running agent and saved to .env (also used by the CLI).
+                    </SheetDescription>
                 </SheetHeader>
                 {isLoading && (
                     <div className="grid gap-3 p-6">

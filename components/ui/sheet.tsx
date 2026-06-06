@@ -57,8 +57,7 @@ function SheetContent({
                         "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom inset-x-0 bottom-0 h-auto border-t",
                     className,
                 )}
-                {...props}
-            >
+                {...props}>
                 {children}
                 <SheetPrimitive.Close className="ring-offset-background focus:ring-ring absolute top-4 right-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-none disabled:pointer-events-none">
                     <XIcon className="size-4" />
@@ -70,23 +69,11 @@ function SheetContent({
 }
 
 function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
-    return (
-        <div
-            data-slot="sheet-header"
-            className={cn("flex flex-col gap-1.5 p-6", className)}
-            {...props}
-        />
-    );
+    return <div data-slot="sheet-header" className={cn("flex flex-col gap-1.5 p-6", className)} {...props} />;
 }
 
 function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
-    return (
-        <div
-            data-slot="sheet-footer"
-            className={cn("mt-auto flex flex-col gap-2 p-6", className)}
-            {...props}
-        />
-    );
+    return <div data-slot="sheet-footer" className={cn("mt-auto flex flex-col gap-2 p-6", className)} {...props} />;
 }
 
 function SheetTitle({ className, ...props }: React.ComponentProps<typeof SheetPrimitive.Title>) {
@@ -99,10 +86,7 @@ function SheetTitle({ className, ...props }: React.ComponentProps<typeof SheetPr
     );
 }
 
-function SheetDescription({
-    className,
-    ...props
-}: React.ComponentProps<typeof SheetPrimitive.Description>) {
+function SheetDescription({ className, ...props }: React.ComponentProps<typeof SheetPrimitive.Description>) {
     return (
         <SheetPrimitive.Description
             data-slot="sheet-description"
@@ -112,13 +96,4 @@ function SheetDescription({
     );
 }
 
-export {
-    Sheet,
-    SheetClose,
-    SheetContent,
-    SheetDescription,
-    SheetFooter,
-    SheetHeader,
-    SheetTitle,
-    SheetTrigger,
-};
+export { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger };

@@ -78,14 +78,7 @@ export function subscribe(runId: string, write: Writer): () => void {
     }
     set.add(write);
 
-    const heartbeat = setInterval(() => {
-        try {
-            write(":\n\n");
-        } catch {
-            // the transport's cleanup removes this writer
-        }
-    }, 15000);
-
+    let heartbeat: ReturnType<typeof setInterval>;
     const cleanup = (): void => {
         clearInterval(heartbeat);
         const current = writers.get(runId);
@@ -96,6 +89,15 @@ export function subscribe(runId: string, write: Writer): () => void {
             }
         }
     };
+    heartbeat = setInterval(() => {
+        try {
+            write(":\n\n");
+        } catch {
+            // a disconnect that never surfaced as abort/cancel — self-clean so the
+            // interval can't leak on a half-open connection.
+            cleanup();
+        }
+    }, 15000);
     return cleanup;
 }
 

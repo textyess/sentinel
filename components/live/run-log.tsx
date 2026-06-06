@@ -23,8 +23,7 @@ export function RunLog({ lines, streaming }: { lines: ProgressEvent[]; streaming
             role="log"
             aria-live="polite"
             aria-relevant="additions"
-            className="h-full overflow-auto rounded-lg border bg-[oklch(0.14_0.004_286)] p-3 font-mono text-xs leading-relaxed"
-        >
+            className="h-full overflow-auto rounded-lg border bg-[oklch(0.14_0.004_286)] p-3 font-mono text-xs leading-relaxed">
             {lines.length === 0 && (
                 <div className="text-muted-foreground/70">{streaming ? "Waiting for the agent…" : "No output."}</div>
             )}
