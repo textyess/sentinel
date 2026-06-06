@@ -3,7 +3,7 @@ import type { ZodType } from "zod";
 /**
  * The LLM reasoning layer, kept behind a small interface so the engine never
  * depends on a concrete provider. The AI SDK backing is one implementation; a
- * brain0/Agno-endpoint backing could be another without touching callers.
+ * custom inference-endpoint backing could be another without touching callers.
  */
 export interface GenerateTextOptions {
     prompt: string;

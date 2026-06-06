@@ -9,11 +9,10 @@
 export type RegExpSource = string;
 
 export interface PortMap {
+    /** The web app's port — the surface Sentinel drives. */
     web: number;
-    api?: number;
-    worker?: number;
-    brain0?: number;
-    gateway?: number;
+    /** Any additional service ports an adapter cares about, keyed by service name. */
+    [service: string]: number;
 }
 
 export interface Credentials {
