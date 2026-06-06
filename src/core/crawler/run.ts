@@ -23,6 +23,30 @@ async function closeQuietly(close: () => Promise<{ videoPath: string | null }>):
     }
 }
 
+/**
+ * Deduped "METHOD origin+path (reason)" lines for the requests the read-only guard
+ * stopped. Query strings are dropped so a one-time token can never reach the log.
+ */
+function summarizeBlocked(blocked: BlockedRequest[]): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const b of blocked) {
+        let where: string;
+        try {
+            const u = new URL(b.url);
+            where = `${u.origin}${u.pathname}`;
+        } catch {
+            where = b.url;
+        }
+        const line = `${b.method} ${where} (${b.reason})`;
+        if (!seen.has(line)) {
+            seen.add(line);
+            out.push(line);
+        }
+    }
+    return out;
+}
+
 export interface RunCrawlArgs {
     /** Adapter already scoped to the baseline URL; NEVER resolved via getAdapter(). */
     adapter: RepoAdapter;
@@ -87,6 +111,18 @@ export async function runCrawlForProject(args: RunCrawlArgs): Promise<RunCrawlRe
         logger.success(
             `Mapped ${graph.coverage.nodeCount} page state(s), ${graph.coverage.edgeCount} navigation edge(s).`,
         );
+        // Make a thin/empty baseline debuggable: when nothing mapped, surface why each
+        // seed was dropped (auth walls, nav errors), and always summarize what the
+        // read-only guard stopped — the usual suspects behind an empty crawl.
+        if (graph.coverage.nodeCount === 0) {
+            for (const note of graph.coverage.notes) {
+                logger.warn(`crawl: ${note}`);
+            }
+        }
+        const blockedLines = summarizeBlocked(session.blocked);
+        if (blockedLines.length > 0) {
+            logger.info(`read-only stopped ${session.blocked.length} request(s): ${blockedLines.join("; ")}`);
+        }
         return { graphFile, coverage: graph.coverage, blocked: session.blocked };
     } finally {
         await closeQuietly(session.close);

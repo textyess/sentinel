@@ -34,6 +34,12 @@ interface QueueItem {
     path: string;
     /** Normalized path of the originating seed, if this item came from the seed list. */
     seedOrigin: string | null;
+    /**
+     * The page is already loaded on this URL (login left us here) — map it in place
+     * rather than re-navigating, so an app whose "/" bounces back to login isn't
+     * thrown away before a single node is built.
+     */
+    alreadyOnPage?: boolean;
 }
 
 /** A navigation edge whose target node is resolved after the crawl, once every path has a node id. */
@@ -73,6 +79,18 @@ export async function crawl(
     const errors: string[] = [];
 
     const queue: QueueItem[] = [];
+    // Login leaves the page on the authenticated landing route. Seed that route FIRST
+    // and map it in place (no re-navigation), so an auth-gated app whose "/" redirects
+    // back to login — and that has no explicit knownRoutes — still gets a real entry
+    // point. A blind goto("/") would resolve to the login path, be discarded as an auth
+    // wall, and, as the only seed, leave the crawl with zero nodes. No-op for a no-auth
+    // crawl: the page is still on about:blank, which isn't an app URL.
+    const landingUrl = page.url();
+    if (landingUrl.startsWith("http") && !isLoginPath(landingUrl, adapter.auth.loginPath)) {
+        const landingNorm = normalizePath(landingUrl, baseUrl).path;
+        queuedPaths.add(landingNorm);
+        queue.push({ path: landingNorm, seedOrigin: landingNorm, alreadyOnPage: true });
+    }
     // Always seed the app root so a project with no explicit knownRoutes (e.g. a public
     // app registered without auto-detect) still has an entry point; the breadth-first
     // crawl discovers the rest by following internal links from there.
@@ -92,7 +110,11 @@ export async function crawl(
 
         let landedUrl: string;
         try {
-            await page.goto(item.path, { waitUntil: "domcontentloaded", timeout: options.navTimeoutMs });
+            // The post-login seed is already loaded — map it where login left us instead
+            // of re-navigating (a hard goto could bounce an SPA back through its login).
+            if (!item.alreadyOnPage) {
+                await page.goto(item.path, { waitUntil: "domcontentloaded", timeout: options.navTimeoutMs });
+            }
             await waitForInteractive(page, options.settleMs);
             landedUrl = page.url();
         } catch (error) {

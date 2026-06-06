@@ -1,4 +1,5 @@
 import type { Locator, Page } from "playwright";
+import { isLoginPath } from "../graph/url";
 import type { AuthStrategy, Credentials } from "../types";
 
 export interface LoginResult {
@@ -61,7 +62,15 @@ export async function performLogin(
     }
 
     try {
-        await page.waitForURL(new RegExp(auth.authenticatedUrlPattern), { timeout });
+        // A genuinely authenticated route must match authenticatedUrlPattern AND no longer
+        // be the login page. The pattern alone can be too loose (auto-detect sometimes
+        // yields "/", which matches the login URL itself), and many apps authenticate
+        // asynchronously — store the session, THEN redirect — so matching the pattern before
+        // that redirect lands would return while still on /login and unauthenticated.
+        const authedRe = new RegExp(auth.authenticatedUrlPattern);
+        await page.waitForURL((url) => authedRe.test(url.pathname) && !isLoginPath(url.href, auth.loginPath), {
+            timeout,
+        });
     } catch (error) {
         const url = page.url();
         if (url.includes(auth.loginPath)) {

@@ -74,6 +74,23 @@ with live runs streamed over SSE and the mention poller started from `instrument
 
 Every dashboard run is forced read-only and goes through the same production preflight + network guard as the CLI. It targets repos that publish PR **preview deployments** and already have a baseline interaction graph (`pnpm crawl`); a project missing either is flagged in the UI, and Sentinel replies that it needs a baseline crawl rather than failing silently.
 
+## Deploy (self-hosted bot for a team)
+
+To run Sentinel as an always-on bot the whole team can trigger, deploy it once
+(Railway or any Docker host), point it at a GitHub bot account, and anyone can tag
+`@sentinel` on a PR to get a recorded run + verdict. It only reaches *outbound*
+(GitHub + the app under test), so it needs **no public URL** — just keep it running.
+See **[DEPLOY.md](DEPLOY.md)** for the full walkthrough; the short version:
+
+```bash
+cp .env.example .env             # set GH_TOKEN + an LLM key + test creds
+docker compose up -d --build     # → dashboard on http://127.0.0.1:4317
+```
+
+Then open the dashboard (privately), register your repo, run one baseline crawl, and
+the bot is live. Verdicts and the recorded video are posted straight into the PR, so
+teammates never need to open the dashboard.
+
 ## Safety model
 
 Two independent signals decide whether to clamp to read-only, and **either one** is enough:

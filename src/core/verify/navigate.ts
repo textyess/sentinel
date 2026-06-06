@@ -28,6 +28,24 @@ function templated(pathOrUrl: string, baseUrl: string): string {
     return normalizePath(pathOrUrl, baseUrl).path;
 }
 
+/**
+ * Reduce a planner-produced route string to a bare path. The planner is asked for a
+ * path, but sometimes decorates a 'navigate' target with a human hint, e.g.
+ * "/agents (via 'Agents button in sidebar')" or "/home — the dashboard". Loaded
+ * verbatim that 404s: the browser percent-encodes the spaces, so the address bar
+ * becomes "/agents%20(via%20...)". A real URL path carries no unescaped space or
+ * "(" (they are %20/%28), so the leading token before either is the path; the
+ * origin is stripped and a leading slash ensured.
+ */
+export function toTargetPath(rawTarget: string): string {
+    const token = rawTarget.trim().split(/[\s(]/, 1)[0] ?? "";
+    const noOrigin = token.replace(/^https?:\/\/[^/]+/, "");
+    if (noOrigin === "") {
+        return "/";
+    }
+    return noOrigin.startsWith("/") ? noOrigin : `/${noOrigin}`;
+}
+
 /** Ranked, self-healing selectors for re-clicking a control the crawl recorded as an edge. */
 function selectorsForVia(via: EdgeVia): string[] {
     const selectors: string[] = [];

@@ -64,7 +64,7 @@ export function loadEnvConfig(): EnvConfig {
             ? "gpt-4o"
             : llmProvider === "bedrock"
               ? "eu.anthropic.claude-sonnet-4-6"
-              : "claude-3-5-sonnet-latest";
+              : "claude-sonnet-4-6";
     return {
         email: process.env.SENTINEL_EMAIL || null,
         password: process.env.SENTINEL_PASSWORD || null,

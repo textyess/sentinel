@@ -10,7 +10,7 @@ import { stripQuery } from "../graph/url";
 import { humanDwell, type PacingOptions, thinkPause } from "../human/pacing";
 import { logger } from "../logger";
 import type { Reasoner } from "../reasoner/types";
-import { navigateLikeUser } from "./navigate";
+import { navigateLikeUser, toTargetPath } from "./navigate";
 import type { PlanStep, StepResult, TestPlan, Verdict } from "./types";
 
 export interface ExecuteOptions {
@@ -112,8 +112,9 @@ async function executeStep(
     await thinkPause(page, options.pacing);
     try {
         if (step.action === "navigate") {
-            const target = step.target.replace(/^https?:\/\/[^/]+/, "");
-            const targetPath = target.startsWith("/") ? target : `/${target}`;
+            // The planner is asked for a bare path but sometimes appends a hint
+            // ("/agents (via 'Agents button in sidebar')"); loaded verbatim that 404s.
+            const targetPath = toTargetPath(step.target);
             // Move between pages the way a user does — click the app's own menu/nav,
             // not the URL bar. Falls back to a direct load only when no in-app route exists.
             const outcome = await navigateLikeUser(page, targetPath, options.graph, {
