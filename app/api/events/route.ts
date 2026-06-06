@@ -18,11 +18,7 @@ export function GET(req: Request): Response {
             // even before the first progress line arrives.
             controller.enqueue(encoder.encode(": connected\n\n"));
             cleanup = subscribe(runId, (chunk) => {
-                try {
-                    controller.enqueue(encoder.encode(chunk));
-                } catch {
-                    // controller already closed — the abort handler will clean up
-                }
+                controller.enqueue(encoder.encode(chunk));
             });
             req.signal.addEventListener("abort", () => {
                 cleanup();
