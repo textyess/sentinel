@@ -1,6 +1,9 @@
-import type { ServerResponse } from "node:http";
 import type { Verdict } from "../index";
 import { addProgressSink, redactSecret } from "../index";
+import { singleton } from "./singleton";
+
+/** A transport sink — the SSE route enqueues each chunk into its response stream. */
+type Writer = (chunk: string) => void;
 
 /**
  * In-memory SSE hub keyed by runId. Subscribes to the logger fan-out so a run's
@@ -8,9 +11,9 @@ import { addProgressSink, redactSecret } from "../index";
  * lets a mid-run connection catch up. Every line is redacted before it leaves.
  */
 const RING = 250;
-const buffers = new Map<string, string[]>();
-const responses = new Map<string, Set<ServerResponse>>();
-const unsubscribers = new Map<string, () => void>();
+const buffers = singleton("sse.buffers", () => new Map<string, string[]>());
+const writers = singleton("sse.writers", () => new Map<string, Set<Writer>>());
+const unsubscribers = singleton("sse.unsubscribers", () => new Map<string, () => void>());
 
 function buffer(runId: string, chunk: string): void {
     let b = buffers.get(runId);
@@ -25,15 +28,15 @@ function buffer(runId: string, chunk: string): void {
 }
 
 function broadcast(runId: string, chunk: string): void {
-    const set = responses.get(runId);
+    const set = writers.get(runId);
     if (!set) {
         return;
     }
-    for (const res of set) {
+    for (const write of set) {
         try {
-            res.write(chunk);
+            write(chunk);
         } catch {
-            // a dead connection is cleaned up on its own 'close' event
+            // a dead subscriber is removed by its own cleanup
         }
     }
 }
@@ -58,42 +61,41 @@ function ensureSink(runId: string): void {
     unsubscribers.set(runId, unsub);
 }
 
-export function subscribe(runId: string, res: ServerResponse): () => void {
-    res.writeHead(200, {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-    });
+/**
+ * Attach a writer to a run's stream. Replays the ring buffer immediately so a mid-run
+ * connection catches up, sends a periodic heartbeat, and returns a cleanup the transport
+ * (the SSE route) calls when the client disconnects.
+ */
+export function subscribe(runId: string, write: Writer): () => void {
     ensureSink(runId);
     for (const chunk of buffers.get(runId) ?? []) {
-        res.write(chunk);
+        write(chunk);
     }
-    let set = responses.get(runId);
+    let set = writers.get(runId);
     if (!set) {
         set = new Set();
-        responses.set(runId, set);
+        writers.set(runId, set);
     }
-    set.add(res);
+    set.add(write);
 
     const heartbeat = setInterval(() => {
         try {
-            res.write(":\n\n");
+            write(":\n\n");
         } catch {
-            // cleaned up on 'close'
+            // the transport's cleanup removes this writer
         }
     }, 15000);
 
     const cleanup = (): void => {
         clearInterval(heartbeat);
-        const current = responses.get(runId);
+        const current = writers.get(runId);
         if (current) {
-            current.delete(res);
+            current.delete(write);
             if (current.size === 0) {
-                responses.delete(runId);
+                writers.delete(runId);
             }
         }
     };
-    res.on("close", cleanup);
     return cleanup;
 }
 

@@ -2,6 +2,7 @@ import { getPrMeta, type IssueComment, listIssueComments, logger, resolveWebPrev
 import { bodyHasMarker, formatErrorComment, postVerdict } from "./comment";
 import { loadServerConfig } from "./config";
 import { isPrRunning, runProject } from "./runner";
+import { singleton } from "./singleton";
 import { listProjects, loadLedger, saveLedger } from "./store";
 import type { HandledMention, MentionLedger, ProjectRecord, ServerConfig } from "./types";
 
@@ -21,20 +22,23 @@ function mentionMatcher(handle: string): RegExp {
 /** Whether a handled mention still needs to be re-polled in future ticks. */
 type MentionOutcome = "unfinished" | "terminal";
 
-let timer: ReturnType<typeof setTimeout> | null = null;
-let running = false;
+/** Poller lifecycle — one instance across instrumentation + routes (see singleton). */
+const state = singleton("poller.state", () => ({
+    timer: null as ReturnType<typeof setTimeout> | null,
+    running: false,
+}));
 /** Per-project backoff after consecutive failures. */
-const backoff = new Map<string, { failures: number; nextAt: number }>();
+const backoff = singleton("poller.backoff", () => new Map<string, { failures: number; nextAt: number }>());
 
 export function isPollerRunning(): boolean {
-    return running;
+    return state.running;
 }
 
 export function startPoller(): void {
-    if (running) {
+    if (state.running) {
         return;
     }
-    running = true;
+    state.running = true;
     const config = loadServerConfig();
     const tick = async (): Promise<void> => {
         try {
@@ -42,19 +46,19 @@ export function startPoller(): void {
         } catch (error) {
             logger.warn(`Poller tick error: ${msg(error)}`);
         }
-        if (running) {
-            timer = setTimeout(tick, config.pollMs);
+        if (state.running) {
+            state.timer = setTimeout(tick, config.pollMs);
         }
     };
     logger.info(`Poller started (every ${Math.round(config.pollMs / 1000)}s).`);
-    timer = setTimeout(tick, 1500);
+    state.timer = setTimeout(tick, 1500);
 }
 
 export function stopPoller(): void {
-    running = false;
-    if (timer) {
-        clearTimeout(timer);
-        timer = null;
+    state.running = false;
+    if (state.timer) {
+        clearTimeout(state.timer);
+        state.timer = null;
     }
 }
 
@@ -62,8 +66,8 @@ async function pollAll(config: ServerConfig): Promise<void> {
     const projects = await listProjects();
     const now = Date.now();
     for (const project of projects) {
-        const state = backoff.get(project.id);
-        if (state && now < state.nextAt) {
+        const entry = backoff.get(project.id);
+        if (entry && now < entry.nextAt) {
             continue;
         }
         try {

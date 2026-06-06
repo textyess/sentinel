@@ -51,11 +51,9 @@ pnpm verify <N>          # add --plan-only to just generate the to-do plan
 
 # Dashboard: a local UI to register repos, watch live runs, and browse the video
 # gallery. Tag Sentinel (e.g. "@sentinel") on a PR and it records a run + posts a
-# verdict back. Opens on http://127.0.0.1:4317.
-pnpm ui                  # builds the dashboard (web/) then serves it
-# For UI development, run the API server and the Vite dev server side by side:
-pnpm ui:server           # the API on http://127.0.0.1:4317
-pnpm web:dev             # Vite HMR on http://127.0.0.1:5173, proxying /api to it
+# verdict back. One server (UI + API) on http://127.0.0.1:4317.
+pnpm dev                 # Next.js dev server with hot-reload (also: pnpm ui)
+pnpm build && pnpm start # production build, then serve
 
 # Typecheck.
 pnpm typecheck
@@ -65,10 +63,10 @@ Artifacts (videos, screenshots, the interaction graph, run manifests) land in `.
 
 ## Dashboard
 
-`pnpm ui` builds the dashboard and starts a local, read-only control panel. The backend is a
-dependency-free `node:http` + SSE server (`src/server/`); the frontend is a Vite + React +
-Tailwind + shadcn/ui SPA (`web/`) built into `web/dist` and served by that same server. For
-UI work, `pnpm web:dev` runs Vite with hot-reload and proxies the API to the running server.
+The dashboard is a single **Next.js** app (`app/`) — one server handles both the UI and the
+API, so `pnpm dev` (or `pnpm build && pnpm start`) is all it takes. The UI is React + Tailwind +
+shadcn/ui; the API is a set of route handlers that wrap the same read-only engine the CLI uses,
+with live runs streamed over SSE and the mention poller started from `instrumentation.ts`.
 
 - **Register a project** — a GitHub repo (`owner/name`) with either the built-in TextYess adapter or a generic adapter you configure in the form (login recipe, preview-env hint, and the *names* of the env vars holding its test credentials — secrets are never stored, only referenced).
 - **Tag to trigger** — the server polls registered repos for PR comments that `@`-mention Sentinel. On a mention it resolves the PR's preview deployment, walks the affected flows in a recorded browser, judges `pass / fail / uncertain`, and posts the verdict back as a comment (with a hidden marker so it never replies to itself).
@@ -104,9 +102,11 @@ src/
     config.ts   # env + paths
     types.ts    # RepoAdapter contract
   adapters/     # per-app config (login, routes, preview, safety)
-  server/       # dashboard backend: node:http + SSE, serves web/dist
+  server/       # dashboard services: API logic, poller, runner, SSE hub, store
   cli.ts        # the `sentinel` CLI
-web/            # dashboard frontend: Vite + React + Tailwind + shadcn/ui SPA
+app/            # Next.js dashboard: UI (page + components) + API route handlers
+components/     # shadcn/ui + feature components
+instrumentation.ts  # starts the mention poller on server boot
 ```
 
 ## License

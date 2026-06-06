@@ -18,6 +18,7 @@ import {
 } from "../index";
 import { formatErrorComment, formatVerdictComment, postVerdict } from "./comment";
 import { dashboardUrl, loadServerConfig } from "./config";
+import { singleton } from "./singleton";
 import { publishCrawlDone, publishDone, publishError } from "./sse";
 import { upsertRunRecord } from "./store";
 import type { ProjectRecord, RunRecord, RunStatus } from "./types";
@@ -41,31 +42,30 @@ function makeRunId(projectId: string, pr: number): string {
 }
 
 /** Global slot semaphore — bounds total concurrent runs (default 1). */
-let activeSlots = 0;
-const slotWaiters: Array<() => void> = [];
+const slots = singleton("runner.slots", () => ({ active: 0, waiters: [] as Array<() => void> }));
 function acquireSlot(max: number): Promise<void> {
     return new Promise<void>((resolve) => {
         const attempt = (): void => {
-            if (activeSlots < max) {
-                activeSlots += 1;
+            if (slots.active < max) {
+                slots.active += 1;
                 resolve();
             } else {
-                slotWaiters.push(attempt);
+                slots.waiters.push(attempt);
             }
         };
         attempt();
     });
 }
 function releaseSlot(): void {
-    activeSlots -= 1;
-    const next = slotWaiters.shift();
+    slots.active -= 1;
+    const next = slots.waiters.shift();
     if (next) {
         next();
     }
 }
 
 /** Per-(repo#pr) guard so the same PR never runs twice at once. Single-owner: see runProject. */
-const inFlight = new Set<string>();
+const inFlight = singleton("runner.inFlight", () => new Set<string>());
 export function isPrRunning(repo: string, pr: number): boolean {
     return inFlight.has(`${repo}#${pr}`);
 }
@@ -305,7 +305,7 @@ export function triggerRunInBackground(
 }
 
 /** Per-project guard so one project isn't crawled twice at once. */
-const crawlInFlight = new Set<string>();
+const crawlInFlight = singleton("runner.crawlInFlight", () => new Set<string>());
 export function isCrawlRunning(projectId: string): boolean {
     return crawlInFlight.has(projectId);
 }

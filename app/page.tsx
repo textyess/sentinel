@@ -1,6 +1,8 @@
+"use client";
+
 import { useState } from "react";
 import { PlusIcon } from "lucide-react";
-import { LiveRunSheet, type ActiveRun } from "@/components/live/live-run-sheet";
+import { type ActiveRun, LiveRunSheet } from "@/components/live/live-run-sheet";
 import { ProjectList } from "@/components/projects/project-list";
 import { RegisterProjectDialog } from "@/components/projects/register-project-dialog";
 import { RunGallery } from "@/components/runs/run-gallery";
@@ -21,7 +23,7 @@ function Count({ value }: { value: number | undefined }) {
     );
 }
 
-export function App() {
+export default function Page() {
     const [registerOpen, setRegisterOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
