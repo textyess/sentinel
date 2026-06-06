@@ -1,0 +1,217 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Sentinel design tokens — a cool, indigo-tinted neutral system with a single
+ * accent. Neutrals are nudged toward hue 286 so every surface shares a quiet
+ * family resemblance; status hues stay reserved for verdicts. OKLCH keeps the
+ * ramps perceptually even across both themes.
+ */
+:root {
+    --radius: 0.625rem;
+
+    --background: oklch(0.992 0.001 286);
+    --foreground: oklch(0.205 0.01 286);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.205 0.01 286);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.205 0.01 286);
+    --primary: oklch(0.545 0.18 276);
+    --primary-foreground: oklch(0.99 0 0);
+    --secondary: oklch(0.97 0.003 286);
+    --secondary-foreground: oklch(0.245 0.01 286);
+    --muted: oklch(0.968 0.003 286);
+    --muted-foreground: oklch(0.505 0.015 286);
+    --accent: oklch(0.965 0.004 286);
+    --accent-foreground: oklch(0.245 0.01 286);
+    --destructive: oklch(0.58 0.21 18);
+    --destructive-foreground: oklch(0.99 0 0);
+    --border: oklch(0.918 0.004 286);
+    --input: oklch(0.9 0.005 286);
+    --ring: oklch(0.545 0.18 276);
+
+    /* Verdict / run-status hues. */
+    --pass: oklch(0.58 0.15 158);
+    --fail: oklch(0.56 0.2 18);
+    --uncertain: oklch(0.66 0.13 70);
+    --running: oklch(0.55 0.16 250);
+    --blocked: oklch(0.55 0.015 286);
+
+    --chart-1: oklch(0.545 0.18 276);
+    --chart-2: oklch(0.58 0.15 158);
+    --chart-3: oklch(0.66 0.13 70);
+    --chart-4: oklch(0.55 0.16 250);
+    --chart-5: oklch(0.56 0.2 18);
+}
+
+.dark {
+    --background: oklch(0.155 0.004 286);
+    --foreground: oklch(0.965 0.003 286);
+    --card: oklch(0.185 0.004 286);
+    --card-foreground: oklch(0.965 0.003 286);
+    --popover: oklch(0.195 0.005 286);
+    --popover-foreground: oklch(0.965 0.003 286);
+    --primary: oklch(0.635 0.17 276);
+    --primary-foreground: oklch(0.99 0 0);
+    --secondary: oklch(0.235 0.006 286);
+    --secondary-foreground: oklch(0.965 0.003 286);
+    --muted: oklch(0.235 0.006 286);
+    --muted-foreground: oklch(0.71 0.012 286);
+    --accent: oklch(0.255 0.008 286);
+    --accent-foreground: oklch(0.97 0.003 286);
+    --destructive: oklch(0.66 0.2 18);
+    --destructive-foreground: oklch(0.99 0 0);
+    --border: oklch(1 0 0 / 9%);
+    --input: oklch(1 0 0 / 13%);
+    --ring: oklch(0.635 0.17 276);
+
+    --pass: oklch(0.74 0.16 158);
+    --fail: oklch(0.7 0.19 18);
+    --uncertain: oklch(0.82 0.14 80);
+    --running: oklch(0.7 0.13 248);
+    --blocked: oklch(0.66 0.015 286);
+
+    --chart-1: oklch(0.635 0.17 276);
+    --chart-2: oklch(0.74 0.16 158);
+    --chart-3: oklch(0.82 0.14 80);
+    --chart-4: oklch(0.7 0.13 248);
+    --chart-5: oklch(0.7 0.19 18);
+}
+
+@theme inline {
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+
+    --color-pass: var(--pass);
+    --color-fail: var(--fail);
+    --color-uncertain: var(--uncertain);
+    --color-running: var(--running);
+    --color-blocked: var(--blocked);
+
+    --color-chart-1: var(--chart-1);
+    --color-chart-2: var(--chart-2);
+    --color-chart-3: var(--chart-3);
+    --color-chart-4: var(--chart-4);
+    --color-chart-5: var(--chart-5);
+
+    --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+    --animate-fade-up: sentinel-fade-up 0.5s var(--ease-out-expo) both;
+
+    @keyframes sentinel-fade-up {
+        from {
+            opacity: 0;
+            transform: translateY(8px);
+        }
+        to {
+            opacity: 1;
+            transform: none;
+        }
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border outline-ring/50;
+    }
+
+    html {
+        scroll-behavior: smooth;
+    }
+
+    body {
+        @apply bg-background text-foreground;
+        font-feature-settings: "cv11", "ss01";
+        font-variation-settings: normal;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+    }
+
+    /* Tighter optical tracking on headings — a quiet Linear signature. */
+    h1,
+    h2,
+    h3 {
+        letter-spacing: -0.014em;
+    }
+
+    ::selection {
+        background-color: color-mix(in oklch, var(--primary) 28%, transparent);
+    }
+
+    /* A restrained, theme-aware scrollbar. */
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: color-mix(in oklch, var(--foreground) 18%, transparent) transparent;
+    }
+    *::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+    *::-webkit-scrollbar-thumb {
+        background-color: color-mix(in oklch, var(--foreground) 16%, transparent);
+        border-radius: 999px;
+        border: 3px solid transparent;
+        background-clip: content-box;
+    }
+    *::-webkit-scrollbar-thumb:hover {
+        background-color: color-mix(in oklch, var(--foreground) 28%, transparent);
+    }
+}
+
+@layer utilities {
+    .animate-fade-up {
+        animation: var(--animate-fade-up);
+    }
+
+    /* A soft breathing ring for an in-flight run. */
+    .pulse-ring {
+        animation: sentinel-pulse-ring 2s ease-in-out infinite;
+    }
+
+    @keyframes sentinel-pulse-ring {
+        0%,
+        100% {
+            box-shadow: 0 0 0 0 color-mix(in oklch, var(--running) 45%, transparent);
+        }
+        50% {
+            box-shadow: 0 0 0 5px color-mix(in oklch, var(--running) 0%, transparent);
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .animate-fade-up,
+        .pulse-ring {
+            animation: none;
+        }
+        html {
+            scroll-behavior: auto;
+        }
+    }
+}

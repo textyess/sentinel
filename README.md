@@ -52,7 +52,8 @@ pnpm verify <N>          # add --plan-only to just generate the to-do plan
 # Dashboard: a local UI to register repos, watch live runs, and browse the video
 # gallery. Tag Sentinel (e.g. "@sentinel") on a PR and it records a run + posts a
 # verdict back. Opens on http://127.0.0.1:4317.
-pnpm ui
+pnpm ui                  # builds the dashboard (web/) then serves it
+pnpm web:dev             # optional: Vite dev server with HMR, proxying the API
 
 # Typecheck.
 pnpm typecheck
@@ -62,7 +63,10 @@ Artifacts (videos, screenshots, the interaction graph, run manifests) land in `.
 
 ## Dashboard
 
-`pnpm ui` starts a local, read-only dashboard (no extra dependencies — `node:http` + SSE):
+`pnpm ui` builds the dashboard and starts a local, read-only control panel. The backend is a
+dependency-free `node:http` + SSE server (`src/server/`); the frontend is a Vite + React +
+Tailwind + shadcn/ui SPA (`web/`) built into `web/dist` and served by that same server. For
+UI work, `pnpm web:dev` runs Vite with hot-reload and proxies the API to the running server.
 
 - **Register a project** — a GitHub repo (`owner/name`) with either the built-in TextYess adapter or a generic adapter you configure in the form (login recipe, preview-env hint, and the *names* of the env vars holding its test credentials — secrets are never stored, only referenced).
 - **Tag to trigger** — the server polls registered repos for PR comments that `@`-mention Sentinel. On a mention it resolves the PR's preview deployment, walks the affected flows in a recorded browser, judges `pass / fail / uncertain`, and posts the verdict back as a comment (with a hidden marker so it never replies to itself).
@@ -98,7 +102,9 @@ src/
     config.ts   # env + paths
     types.ts    # RepoAdapter contract
   adapters/     # per-app config (login, routes, preview, safety)
+  server/       # dashboard backend: node:http + SSE, serves web/dist
   cli.ts        # the `sentinel` CLI
+web/            # dashboard frontend: Vite + React + Tailwind + shadcn/ui SPA
 ```
 
 ## License

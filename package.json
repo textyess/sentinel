@@ -13,12 +13,15 @@
     "sitemap": "tsx src/cli.ts sitemap",
     "pr": "tsx src/cli.ts pr",
     "verify": "tsx src/cli.ts verify",
-    "ui": "tsx src/server/main.ts",
+    "ui": "pnpm run ui:build && tsx src/server/main.ts",
+    "ui:server": "tsx src/server/main.ts",
+    "ui:build": "pnpm --dir web build",
+    "web:dev": "pnpm --dir web dev",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "lint": "biome check src",
     "format": "biome check --write src",
-    "clean": "rm -rf .sentinel .turbo dist"
+    "clean": "rm -rf .sentinel .turbo dist web/dist"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "^1.1.6",

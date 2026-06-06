@@ -24,12 +24,30 @@ function msg(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
-const STATIC_FILES: Record<string, { file: string; type: string }> = {
-    "/": { file: "index.html", type: "text/html; charset=utf-8" },
-    "/index.html": { file: "index.html", type: "text/html; charset=utf-8" },
-    "/app.js": { file: "app.js", type: "text/javascript; charset=utf-8" },
-    "/styles.css": { file: "styles.css", type: "text/css; charset=utf-8" },
+// The dashboard is a Vite SPA built into web/dist (see web/). In dev it runs on
+// Vite's own server and proxies the API here; in production this server hosts the
+// built assets directly.
+const WEB_DIST = path.join(PACKAGE_ROOT, "web", "dist");
+
+const MIME: Record<string, string> = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".map": "application/json; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".ico": "image/x-icon",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".txt": "text/plain; charset=utf-8",
 };
+
+function contentTypeFor(file: string): string {
+    return MIME[path.extname(file).toLowerCase()] ?? "application/octet-stream";
+}
 
 function sendJson(res: http.ServerResponse, status: number, data: unknown): void {
     const body = JSON.stringify(data);
@@ -57,11 +75,11 @@ async function readBody(req: http.IncomingMessage): Promise<unknown> {
     }
 }
 
-/** Reject any artifact path that escapes the output directory (read-any-file guard). */
-function assertWithinOutputDir(target: string): string {
-    const root = path.resolve(loadEnvConfig().outputDir);
+/** Reject any path that escapes `root` (read-any-file guard). */
+function assertWithin(root: string, target: string): string {
+    const base = path.resolve(root);
     const resolved = path.resolve(target);
-    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    if (resolved !== base && !resolved.startsWith(base + path.sep)) {
         throw new HttpError(403, "Forbidden path.");
     }
     return resolved;
@@ -95,8 +113,9 @@ async function serveFile(
     res: http.ServerResponse,
     filePath: string,
     contentType: string,
+    root?: string,
 ): Promise<void> {
-    const safe = assertWithinOutputDir(filePath);
+    const safe = assertWithin(root ?? loadEnvConfig().outputDir, filePath);
     let stat: fs.Stats;
     try {
         stat = await fsp.stat(safe);
@@ -125,19 +144,39 @@ async function serveFile(
     fs.createReadStream(safe).pipe(res);
 }
 
-async function serveStatic(res: http.ServerResponse, pathname: string): Promise<void> {
-    const entry = STATIC_FILES[pathname];
-    if (!entry) {
-        sendJson(res, 404, { error: "not found" });
+/** Serve the built SPA: a real asset when one matches, otherwise index.html (client routing). */
+async function serveSpa(req: http.IncomingMessage, res: http.ServerResponse, pathname: string): Promise<void> {
+    const indexPath = path.join(WEB_DIST, "index.html");
+    if (!fs.existsSync(indexPath)) {
+        sendJson(res, 503, {
+            error: "Dashboard not built. Run `pnpm ui:build` (or `pnpm --filter web build`) first.",
+        });
         return;
     }
-    try {
-        const body = await fsp.readFile(path.join(PACKAGE_ROOT, "web", entry.file));
-        res.writeHead(200, { "Content-Type": entry.type });
-        res.end(body);
-    } catch {
-        sendJson(res, 404, { error: "not found" });
+
+    if (pathname !== "/") {
+        let resolved: string | null = null;
+        try {
+            resolved = assertWithin(WEB_DIST, path.join(WEB_DIST, pathname));
+        } catch {
+            resolved = null; // escaped the dist root — fall through to index.html
+        }
+        if (resolved) {
+            try {
+                const stat = await fsp.stat(resolved);
+                if (stat.isFile()) {
+                    await serveFile(req, res, resolved, contentTypeFor(resolved), WEB_DIST);
+                    return;
+                }
+            } catch {
+                // no such asset — fall through to the SPA entry point
+            }
+        }
     }
+
+    const body = await fsp.readFile(indexPath);
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(body);
 }
 
 async function serveVideo(req: http.IncomingMessage, res: http.ServerResponse, runId: string): Promise<void> {
@@ -267,7 +306,7 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
             return;
         }
         if (method === "GET") {
-            await serveStatic(res, url.pathname);
+            await serveSpa(req, res, url.pathname);
             return;
         }
         sendJson(res, 404, { error: "not found" });
