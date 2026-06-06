@@ -4,6 +4,7 @@ import { chromium } from "playwright";
 import { installReadOnlyGuard } from "../safety/read-only-guard";
 import type { BlockedRequest, NetworkEvent, SafetyConfig } from "../types";
 import { enableCursor } from "./cursor";
+import { enableUrlOverlay } from "./url-overlay";
 
 export interface DriverOptions {
     baseUrl: string;
@@ -72,9 +73,11 @@ export async function createSession(options: DriverOptions): Promise<DriverSessi
         }
 
         // Only when recording: a visible cursor that glides to each click makes the video legible
-        // (which click happened where, and the pointer travelling there).
+        // (which click happened where, and the pointer travelling there), plus an address-bar
+        // overlay so a viewer can always see which page the agent is on.
         if (options.videoDir) {
             await enableCursor(context);
+            await enableUrlOverlay(context);
         }
 
         const page = await context.newPage();

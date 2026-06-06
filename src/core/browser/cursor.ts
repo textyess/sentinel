@@ -5,8 +5,8 @@ import type { BrowserContext, Page } from "playwright";
  * OS pointer, so without this the video only ever shows the *result* of a click —
  * never the pointer travelling to it. Two halves work together:
  *
- *  - an injected overlay (below): a dumb DOM follower — a dot that tracks real mouse
- *    events and pulses on press; and
+ *  - an injected overlay (below): a dumb DOM follower — a macOS-style arrow pointer
+ *    with a soft highlight that tracks real mouse events and pulses on press; and
  *  - `glide()` on the Node side: it walks Playwright's mouse to a target in small,
  *    time-spaced steps so the overlay visibly travels across the page before a click,
  *    instead of teleporting (Playwright's own click moves the pointer in one jump).
@@ -21,17 +21,32 @@ const POSITION_TWEEN_MS = 90;
 const GLIDE_MS = 420;
 const GLIDE_STEPS = 16;
 
+/**
+ * The pointer itself: a real macOS-style arrow (near-black fill, white outline) so
+ * the recording reads as a pointer, not an abstract dot. Its tip is the hotspot at
+ * SVG (1.5, 1.5); the overlay's negative margin lands that tip on the actual mouse
+ * point. Encoded with encodeURIComponent (double-quoted attributes only) so the
+ * data URI carries no quotes/spaces and drops safely into the unquoted url(...).
+ */
+const ARROW_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="22" viewBox="0 0 16 22">' +
+    '<path d="M1.5 1.5 L1.5 19 L6.2 14.7 L9.1 21 L11.4 20 L8.5 14 L14.5 14 Z" ' +
+    'fill="#1f2328" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+const ARROW_DATA_URI = `data:image/svg+xml,${encodeURIComponent(ARROW_SVG)}`;
+
 const CURSOR_INIT_SCRIPT = `(() => {
   if (window.__sentinelCursor) { return; }
   window.__sentinelCursor = true;
   var attach = function () {
     if (!document.body) { return; }
     var style = document.createElement('style');
-    style.textContent = '#__sentinel_cursor{position:fixed;top:0;left:0;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:rgba(88,166,255,.35);border:2px solid #58a6ff;box-shadow:0 0 0 1px rgba(0,0,0,.45);pointer-events:none;z-index:2147483647;transition:left ${POSITION_TWEEN_MS}ms linear,top ${POSITION_TWEEN_MS}ms linear,width .12s,height .12s,margin .12s,background .12s}' +
-      '#__sentinel_cursor.down{width:30px;height:30px;margin:-15px 0 0 -15px;background:rgba(88,166,255,.55)}' +
-      '#__sentinel_cursor::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid rgba(88,166,255,.9);opacity:0}' +
-      '#__sentinel_cursor.down::after{animation:__sentinel_ping .45s ease-out}' +
-      '@keyframes __sentinel_ping{from{opacity:.9;transform:scale(.4)}to{opacity:0;transform:scale(2.4)}}';
+    style.textContent = '#__sentinel_cursor{position:fixed;top:0;left:0;width:34px;height:34px;margin:-1.5px 0 0 -1.5px;pointer-events:none;z-index:2147483647;background:radial-gradient(circle 14px at 6px 7px,rgba(255,209,32,.55),rgba(255,209,32,.22) 45%,rgba(255,209,32,0) 72%);transition:left ${POSITION_TWEEN_MS}ms linear,top ${POSITION_TWEEN_MS}ms linear,background .12s ease}' +
+      '#__sentinel_cursor::after{content:"";position:absolute;inset:0;background:url(${ARROW_DATA_URI}) no-repeat 0 0;background-size:16px 22px;filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.5));transition:transform .12s ease;transform-origin:1.5px 1.5px}' +
+      '#__sentinel_cursor.down{background:radial-gradient(circle 17px at 6px 7px,rgba(255,209,32,.85),rgba(255,209,32,.32) 45%,rgba(255,209,32,0) 72%)}' +
+      '#__sentinel_cursor.down::after{transform:scale(.86)}' +
+      '#__sentinel_cursor::before{content:"";position:absolute;left:6px;top:7px;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;border:2px solid rgba(255,199,0,.95);opacity:0}' +
+      '#__sentinel_cursor.down::before{animation:__sentinel_ping .5s ease-out}' +
+      '@keyframes __sentinel_ping{from{opacity:.85;transform:scale(.6)}to{opacity:0;transform:scale(3.4)}}';
     (document.head || document.documentElement).appendChild(style);
     var dot = document.createElement('div');
     dot.id = '__sentinel_cursor';

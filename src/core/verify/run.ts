@@ -4,6 +4,7 @@ import { performLogin } from "../auth/login";
 import { ensureAppReachable } from "../bringup/app";
 import { createSession } from "../browser/driver";
 import type { EnvConfig } from "../config";
+import { waitForInteractive } from "../graph/extract";
 import { loadGraph } from "../graph/store";
 import type { InteractionGraph } from "../graph/types";
 import type { PacingOptions } from "../human/pacing";
@@ -14,6 +15,7 @@ import { runProductionPreflight } from "../safety/production-guard";
 import { redactSecret } from "../safety/redact";
 import type { BlockedRequest, RepoAdapter } from "../types";
 import { executePlan, judgeVerdict } from "./execute";
+import { navigateLikeUser } from "./navigate";
 import { generatePlan } from "./plan";
 import type { StepResult, TestPlan, Verdict, VerifyManifest } from "./types";
 
@@ -175,6 +177,7 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
         videoDir: path.join(runDir, "video"),
     });
 
+    const destructive = adapter.safety.destructiveControlPatterns.map((p) => new RegExp(p, "i"));
     let videoPath: string | null = null;
     let results: StepResult[] = [];
     let verdict: Verdict = { outcome: "uncertain", confidence: "low", summary: "Not executed.", evidence: [] };
@@ -186,17 +189,30 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
         } else {
             logger.info("No login required — executing the plan directly ...");
         }
-        // The one direct load: opening the app at its entry point (what a user does
-        // when they follow a link/bookmark). Every page-to-page move after this is a
-        // click through the app's own menus — see navigateLikeUser in the executor.
+        // Reach the entry point the way a person does: the app opens on its own
+        // landing page, so click through its menus/sidebar to the start route rather
+        // than typing a URL. navigateLikeUser loads a URL directly only when there is
+        // no in-app route — so the recording shows a real navigation, not a jump,
+        // whenever the interaction map allows (which, with a baseline crawl, is every
+        // top-level route).
         if (plan.startRoute) {
-            await session.page
-                .goto(plan.startRoute, { waitUntil: "domcontentloaded", timeout: env.loginTimeoutMs })
-                .catch(() => {});
+            const startPath = plan.startRoute.startsWith("/") ? plan.startRoute : `/${plan.startRoute}`;
+            await waitForInteractive(session.page, 6000).catch(() => {});
+            const startOutcome = await navigateLikeUser(session.page, startPath, graph, {
+                destructive,
+                baseUrl: targetUrl,
+                loginPath: adapter.auth.loginPath,
+                settleMs: 6000,
+                navTimeoutMs: env.loginTimeoutMs,
+                clickTimeoutMs: 8000,
+            }).catch(() => null);
+            if (startOutcome) {
+                logger.info(`Start: ${startOutcome.observation}`);
+            }
         }
         results = await executePlan(session, plan, {
             reasoner,
-            destructive: adapter.safety.destructiveControlPatterns.map((p) => new RegExp(p, "i")),
+            destructive,
             settleMs: 6000,
             navTimeoutMs: env.loginTimeoutMs,
             clickTimeoutMs: 8000,
