@@ -39,6 +39,8 @@ export interface ProjectView {
     createdAt: string;
     graphPresent: boolean;
     credsConfigured: boolean;
+    /** False for a public (no-login) project — the UI then shows "no login needed". */
+    authRequired: boolean;
 }
 
 // POST /api/projects returns the base record — graphPresent/credsConfigured are
@@ -82,8 +84,12 @@ export interface GenericAuthInput {
 
 export interface GenericAdapterInput {
     auth: GenericAuthInput;
-    emailEnv: string;
-    passwordEnv: string;
+    // When false, the app is public — no login, no credentials. Defaults to true.
+    authRequired?: boolean;
+    // Credential env-var NAMES — optional; the server derives them from the repo slug
+    // when omitted, so the registration form no longer asks for them.
+    emailEnv?: string;
+    passwordEnv?: string;
     previewEnvIncludes: string;
     pagesPrefix?: string;
     allowedMutationPatterns: string[];
@@ -115,8 +121,37 @@ export interface CrawlCoverage {
     routesUnreached: number;
 }
 
+// ---- auto-detect onboarding -------------------------------------------------
+
+export interface AutodetectFieldMeta {
+    confidence: Confidence;
+    source: string;
+}
+
+// The server emits its full GenericProjectConfig as the proposal's adapter (a superset
+// of the registration input), so model that wire shape honestly. The dialog reads only
+// auth.*, pagesPrefix, and allowedMutationPatterns; the extra fields are carried through.
+export interface AutodetectAdapter extends GenericAdapterInput {
+    knownRoutes?: string[];
+    productionMarkers?: string[];
+    destructiveControlPatterns?: string[];
+}
+
+export interface AutodetectProposal {
+    repo: string;
+    baselineUrl: string;
+    previewEnvIncludes: string;
+    /** False when the detector found the app needs no login. */
+    authRequired: boolean;
+    adapter: AutodetectAdapter;
+    /** Keyed by dotted field path, e.g. "auth.loginPath" / "allowedMutationPatterns". */
+    fieldMeta: Record<string, AutodetectFieldMeta>;
+    notes: string[];
+}
+
 export type DoneEvent =
     | { kind?: undefined; verdict: Verdict; videoUrl: string | null }
-    | { kind: "crawl"; coverage: CrawlCoverage; graphPresent: true };
+    | { kind: "crawl"; coverage: CrawlCoverage; graphPresent: true }
+    | { kind: "autodetect"; proposal: AutodetectProposal };
 
-export type RunKind = "verify" | "crawl";
+export type RunKind = "verify" | "crawl" | "autodetect";

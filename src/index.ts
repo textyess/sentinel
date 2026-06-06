@@ -33,12 +33,17 @@ export type {
     InteractionGraph,
     PageNode,
 } from "./core/graph/types";
-export { normalizePath, resolveInternalPath } from "./core/graph/url";
+export { normalizePath, resolveInternalPath, stripQuery } from "./core/graph/url";
 export { humanDwell, type PacingOptions, thinkPause } from "./core/human/pacing";
 export type { LogLine } from "./core/logger";
 export { addProgressSink, logger, runWithProgress } from "./core/logger";
 export type { RunTotals } from "./core/observability/langfuse";
 export { endRun, runTotals, startRun } from "./core/observability/langfuse";
+export type { DetectInput } from "./core/onboard/detect";
+export { detectProjectConfig } from "./core/onboard/detect";
+export type { RepoScanResult } from "./core/onboard/repo-scan";
+export { scanRepo } from "./core/onboard/repo-scan";
+export type { FieldMeta, OnboardConfidence, OnboardProposal } from "./core/onboard/types";
 export type { IssueComment, PrMeta } from "./core/pr/github";
 export {
     detectRepo,
@@ -47,7 +52,9 @@ export {
     getPrMeta,
     isGhAuthenticated,
     listIssueComments,
+    listRepoDir,
     postPrComment,
+    resolveProductionUrl,
     resolveWebPreviewUrl,
     uploadReleaseAsset,
 } from "./core/pr/github";

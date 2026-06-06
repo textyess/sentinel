@@ -1,4 +1,5 @@
-import { PlusIcon, SettingsIcon, ShieldCheckIcon } from "lucide-react";
+import { PlusIcon, SettingsIcon } from "lucide-react";
+import { EyeMark } from "@/components/brand/eye-mark";
 import { HealthIndicator } from "@/components/health-indicator";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -8,12 +9,10 @@ export function TopBar({ onOpenSettings, onNewProject }: { onOpenSettings: () =>
         <header className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur-xl">
             <div className="mx-auto flex h-15 max-w-6xl items-center gap-3 px-4 sm:px-6">
                 <div className="flex items-center gap-2.5">
-                    <span className="grid size-8 place-items-center rounded-lg bg-primary/12 text-primary ring-1 ring-inset ring-primary/20">
-                        <ShieldCheckIcon className="size-4.5" />
-                    </span>
+                    <EyeMark size={44} className="shrink-0" />
                     <div className="leading-tight">
-                        <h1 className="text-sm font-semibold tracking-tight">Sentinel</h1>
-                        <p className="hidden text-xs text-muted-foreground sm:block">
+                        <h1 className="font-hand text-xl font-bold leading-none tracking-tight">Sentinel</h1>
+                        <p className="mt-0.5 hidden text-xs text-muted-foreground sm:block">
                             Learns your app, then watches your PRs
                         </p>
                     </div>

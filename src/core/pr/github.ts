@@ -154,6 +154,63 @@ export async function resolveWebPreviewUrl(repo: string, headSha: string, envInc
     }
 }
 
+/**
+ * List a directory's entries in a repo via the contents API (no clone). Returns null
+ * on any failure (e.g. a 404 for a missing dir), so callers can probe for existence.
+ * `repo` is "owner/name"; `dirPath` "" reads the repo root.
+ */
+export async function listRepoDir(
+    repo: string,
+    dirPath: string,
+): Promise<Array<{ name: string; type: "file" | "dir" }> | null> {
+    if (!repo) {
+        return null;
+    }
+    const suffix = dirPath ? `/${dirPath.replace(/^\/+|\/+$/g, "")}` : "";
+    try {
+        const out = await gh(["api", `repos/${repo}/contents${suffix}`]);
+        const parsed = JSON.parse(out) as Array<{ name?: string; type?: string }>;
+        if (!Array.isArray(parsed)) {
+            return null;
+        }
+        return parsed
+            .filter((e): e is { name: string; type: string } => typeof e.name === "string")
+            .map((e) => ({ name: e.name, type: e.type === "dir" ? "dir" : "file" }));
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Best-effort resolution of a repo's production (or baseline) web URL from its
+ * deployments — the environment whose name includes `envIncludes` and is NOT a PR
+ * preview. Returns null when none is found (the human supplies the URL instead).
+ */
+export async function resolveProductionUrl(repo: string, envIncludes: string): Promise<string | null> {
+    if (!repo) {
+        return null;
+    }
+    try {
+        const out = await gh(["api", `repos/${repo}/deployments?per_page=30`]);
+        const deploys = JSON.parse(out) as Array<{ id: number; environment: string }>;
+        const needle = envIncludes.toLowerCase();
+        const prod =
+            deploys.find((d) => {
+                const env = d.environment.toLowerCase();
+                return env.includes(needle) && !env.includes("preview");
+            }) ?? deploys.find((d) => !d.environment.toLowerCase().includes("preview"));
+        if (!prod) {
+            return null;
+        }
+        const statusesOut = await gh(["api", `repos/${repo}/deployments/${prod.id}/statuses?per_page=30`]);
+        const statuses = JSON.parse(statusesOut) as Array<{ state: string; environment_url?: string }>;
+        const ready = statuses.find((s) => s.state === "success" && s.environment_url);
+        return ready?.environment_url ?? null;
+    } catch {
+        return null;
+    }
+}
+
 /** Extract a PR number from an issue/comment's issue_url (".../issues/<n>"). */
 function prNumberFromIssueUrl(issueUrl: string): number {
     const segment = issueUrl.split("/").pop() ?? "";

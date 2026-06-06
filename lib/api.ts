@@ -60,6 +60,8 @@ export const api = {
         request<TriggerResult>(`/api/projects/${encodeURIComponent(id)}/verify/${pr}`, {
             method: "POST",
         }),
+    autodetect: (body: { repo: string; baselineUrl: string | null; previewEnvIncludes?: string }) =>
+        request<TriggerResult>("/api/autodetect", { method: "POST", body: JSON.stringify(body) }),
 
     runs: () => request<RunSummary[]>("/api/runs"),
     deleteRun: (runId: string) => request<{ ok: true }>(`/api/runs/${encodeURIComponent(runId)}`, { method: "DELETE" }),

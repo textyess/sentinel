@@ -27,8 +27,21 @@ export const CRAWL_PHASES: Phase[] = [
     { key: "mapped", label: "Map", match: /Mapped \d/i },
 ];
 
+export const AUTODETECT_PHASES: Phase[] = [
+    { key: "connect", label: "Connect", match: /Connecting/i },
+    { key: "login", label: "Login page", match: /login page/i },
+    { key: "infer", label: "Infer", match: /Inferring/i },
+    { key: "propose", label: "Proposal", match: NEVER },
+];
+
 export function phasesFor(kind: RunKind): Phase[] {
-    return kind === "crawl" ? CRAWL_PHASES : VERIFY_PHASES;
+    if (kind === "crawl") {
+        return CRAWL_PHASES;
+    }
+    if (kind === "autodetect") {
+        return AUTODETECT_PHASES;
+    }
+    return VERIFY_PHASES;
 }
 
 /** Highest phase index reached by any line so far. */

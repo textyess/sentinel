@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono, Shantell_Sans } from "next/font/google";
 import type { ReactNode } from "react";
 import { Providers } from "./providers";
 import "./globals.css";
@@ -10,18 +10,41 @@ const jetbrainsMono = JetBrains_Mono({
     variable: "--font-jetbrains-mono",
     display: "swap",
 });
+// Brand wordmark — a casual marker hand that matches the drawn eye (font-hand utility).
+const shantellSans = Shantell_Sans({
+    subsets: ["latin"],
+    variable: "--font-shantell",
+    display: "swap",
+});
 
 export const metadata: Metadata = {
     title: "Sentinel",
-    description: "Sentinel learns your app, then watches your PRs.",
+    description: "The eye that watches your browser — a sentinel for your pull requests.",
     icons: {
-        icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>%F0%9F%9B%A1</text></svg>",
+        // Sentinel's eye, bare for ≤32px. Swaps colorway with the OS theme; PNG is the fallback.
+        icon: [
+            {
+                url: "/brand/sentinel-favicon.svg",
+                type: "image/svg+xml",
+                media: "(prefers-color-scheme: light)",
+            },
+            {
+                url: "/brand/sentinel-favicon-dark.svg",
+                type: "image/svg+xml",
+                media: "(prefers-color-scheme: dark)",
+            },
+            { url: "/brand/png/sentinel-favicon-32.png", type: "image/png", sizes: "32x32" },
+        ],
+        apple: { url: "/brand/png/sentinel-favicon-180.png", sizes: "180x180" },
     },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
     return (
-        <html lang="en" suppressHydrationWarning className={`${inter.variable} ${jetbrainsMono.variable}`}>
+        <html
+            lang="en"
+            suppressHydrationWarning
+            className={`${inter.variable} ${jetbrainsMono.variable} ${shantellSans.variable}`}>
             <body>
                 <Providers>{children}</Providers>
             </body>

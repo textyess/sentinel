@@ -35,6 +35,7 @@ export function createExampleAdapter(env: EnvConfig): RepoAdapter {
         displayName: "Example App",
         baseUrl,
         ports: { web: 3000 },
+        authRequired: true,
         auth: {
             loginPath: "/login",
             emailLabel: "Email",

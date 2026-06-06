@@ -1,6 +1,7 @@
 import type { Verdict } from "../index";
 import { addProgressSink, redactSecret } from "../index";
 import { singleton } from "./singleton";
+import type { AutodetectProposal } from "./types";
 
 /** A transport sink — the SSE route enqueues each chunk into its response stream. */
 type Writer = (chunk: string) => void;
@@ -126,6 +127,16 @@ export function publishDone(runId: string, payload: { verdict: Verdict; videoUrl
 
 export function publishError(runId: string, message: string): void {
     emit(runId, `event: error\ndata: ${JSON.stringify({ message: redactSecret(message) })}\n\n`);
+    releaseSink(runId);
+}
+
+/**
+ * Terminal event for an auto-detect run — the proposed config the dashboard pre-fills.
+ * Free-text notes are redacted; emailEnv/passwordEnv are env-var names, not secrets.
+ */
+export function publishAutodetectDone(runId: string, proposal: AutodetectProposal): void {
+    const safe: AutodetectProposal = { ...proposal, notes: proposal.notes.map(redactSecret) };
+    emit(runId, `event: done\ndata: ${JSON.stringify({ kind: "autodetect", proposal: safe })}\n\n`);
     releaseSink(runId);
 }
 

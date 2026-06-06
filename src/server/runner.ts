@@ -1,27 +1,35 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { GenericProjectConfig } from "../index";
 import {
     adapterForProject,
     createReasoner,
+    detectProjectConfig,
     endRun,
+    GENERIC_SAFETY_DEFAULTS,
     getPrMeta,
+    isGhAuthenticated,
     llmCredentialIssue,
     loadEnvConfig,
     logger,
     redactSecret,
+    resolveProductionUrl,
     resolveWebPreviewUrl,
     runCrawlForProject,
     runVerifyForProject,
     runWithProgress,
+    scanRepo,
     startRun,
+    stripQuery,
     uploadReleaseAsset,
 } from "../index";
 import { formatErrorComment, formatVerdictComment, postVerdict } from "./comment";
 import { dashboardUrl, loadServerConfig } from "./config";
+import { credEnvNames, slug } from "./naming";
 import { singleton } from "./singleton";
-import { publishCrawlDone, publishDone, publishError } from "./sse";
+import { publishAutodetectDone, publishCrawlDone, publishDone, publishError } from "./sse";
 import { upsertRunRecord } from "./store";
-import type { ProjectRecord, RunRecord, RunStatus } from "./types";
+import type { AutodetectProposal, ProjectRecord, RunRecord, RunStatus } from "./types";
 
 function msg(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
@@ -167,7 +175,7 @@ export async function runProject(
         } catch (error) {
             return await fail("errored", `Adapter error: ${msg(error)}`);
         }
-        if (!adapter.credentials) {
+        if (adapter.authRequired && !adapter.credentials) {
             return await fail(
                 "blocked",
                 `I can't verify this yet — no test credentials are configured for ${project.displayName}.`,
@@ -384,7 +392,7 @@ export async function crawlProject(
         } catch (error) {
             return await fail("errored", `Adapter error: ${msg(error)}`);
         }
-        if (!adapter.credentials) {
+        if (adapter.authRequired && !adapter.credentials) {
             return await fail("blocked", `No test credentials are configured for ${project.displayName}.`);
         }
         // The server ALWAYS crawls read-only.
@@ -443,6 +451,163 @@ export function triggerCrawlInBackground(project: ProjectRecord, opts: CrawlOpti
     const runId = `${project.id}__crawl-${stamp()}`;
     void crawlProject(project, { ...opts, runId }).catch((error) => {
         logger.warn(`Crawl ${runId} crashed: ${msg(error)}`);
+    });
+    return runId;
+}
+
+/** Per-repo guard so one repo isn't auto-detected twice at once. Keyed by "owner/name". */
+const autodetectInFlight = singleton("runner.autodetectInFlight", () => new Set<string>());
+export function isAutodetectRunning(repo: string): boolean {
+    return autodetectInFlight.has(repo);
+}
+
+export interface AutodetectInput {
+    repo: string;
+    baselineUrl: string | null;
+    /** Preview-deployment substring (defaults to "web") — used to resolve a baseline and echoed back. */
+    previewEnvIncludes?: string;
+    /** Pre-chosen runId so the trigger can return it before the run finishes. */
+    runId?: string;
+}
+
+/**
+ * Observe a live app (and optionally scan the repo) to propose a generic-project
+ * config the user can register without hand-typing every field. Mirrors crawlProject:
+ * shares the global slot + Langfuse bracketing, streams progress, and is ALWAYS
+ * read-only — detection only reads the login page, never submits it. The proposal is
+ * stored on the RunRecord and pushed over SSE; nothing is registered automatically and
+ * the proposed mutation allow-list is never applied here.
+ */
+export async function autodetectProject(input: AutodetectInput): Promise<{ runId: string; status: RunStatus }> {
+    const env = loadEnvConfig();
+    const config = loadServerConfig();
+    const projectId = slug(input.repo);
+    const runId = input.runId ?? `${projectId}__autodetect-${stamp()}`;
+    const flightKey = input.repo;
+
+    if (autodetectInFlight.has(flightKey)) {
+        return { runId, status: "blocked" };
+    }
+    autodetectInFlight.add(flightKey);
+
+    const record: RunRecord = {
+        runId,
+        projectId,
+        repo: input.repo,
+        pr: 0,
+        title: `${input.repo} — config auto-detect`,
+        kind: "autodetect",
+        status: "running",
+        triggerCommentId: null,
+        runDir: null,
+        manifestPath: null,
+        videoPath: null,
+        verdict: null,
+        proposedConfig: null,
+        startedAt: new Date().toISOString(),
+        finishedAt: null,
+        error: null,
+    };
+
+    const fail = async (status: RunStatus, reason: string): Promise<{ runId: string; status: RunStatus }> => {
+        record.status = status;
+        record.error = redactSecret(reason);
+        record.finishedAt = new Date().toISOString();
+        await upsertRunRecord(record);
+        publishError(runId, reason);
+        return { runId, status };
+    };
+
+    try {
+        await upsertRunRecord(record);
+
+        const llmIssue = llmCredentialIssue(env.llmProvider);
+        if (llmIssue) {
+            return await fail("blocked", `Auto-detect needs the language model — it isn't configured (${llmIssue}).`);
+        }
+
+        const previewEnvIncludes = input.previewEnvIncludes?.trim() || "web";
+        const ghOk = await isGhAuthenticated();
+        let resolvedBaseline = input.baselineUrl;
+        if (!resolvedBaseline && ghOk) {
+            resolvedBaseline = await resolveProductionUrl(input.repo, previewEnvIncludes);
+        }
+        if (!resolvedBaseline) {
+            return await fail("blocked", "Provide a baseline URL to auto-detect from (the app's live URL).");
+        }
+        const baselineUrl = resolvedBaseline;
+
+        // The slot is held ONLY around the browser/LLM work, exactly like crawl/verify.
+        await acquireSlot(config.maxConcurrent);
+        try {
+            const reasoner = createReasoner(env);
+            startRun(`autodetect-${projectId}`, {
+                kind: "autodetect-server",
+                model: reasoner.modelLabel,
+                project: projectId,
+            });
+            try {
+                const proposal = await runWithProgress(runId, async () => {
+                    const repoScan = ghOk ? await scanRepo(input.repo) : null;
+                    if (!ghOk) {
+                        logger.warn("GitHub CLI not authenticated — skipping repository scan (pages prefix).");
+                    }
+                    return detectProjectConfig({
+                        reasoner,
+                        baseUrl: baselineUrl,
+                        headless: env.headless,
+                        telemetryPatterns: GENERIC_SAFETY_DEFAULTS.telemetryPatterns,
+                        destructiveControlPatterns: GENERIC_SAFETY_DEFAULTS.destructiveControlPatterns,
+                        repoScan,
+                        previewEnvIncludes,
+                    });
+                });
+
+                const creds = credEnvNames(input.repo);
+                const adapter: GenericProjectConfig = {
+                    auth: proposal.auth,
+                    authRequired: proposal.authRequired,
+                    emailEnv: creds.emailEnv,
+                    passwordEnv: creds.passwordEnv,
+                    previewEnvIncludes: proposal.previewEnvIncludes,
+                    pagesPrefix: proposal.pagesPrefix ?? undefined,
+                    knownRoutes: proposal.knownRoutes,
+                    allowedMutationPatterns: proposal.allowedMutationPatterns,
+                };
+                const result: AutodetectProposal = {
+                    repo: input.repo,
+                    // Strip query+hash so a one-time bypass/login token never lands at rest or on the wire.
+                    baselineUrl: stripQuery(baselineUrl),
+                    previewEnvIncludes: proposal.previewEnvIncludes,
+                    authRequired: proposal.authRequired,
+                    adapter,
+                    fieldMeta: proposal.fieldMeta,
+                    notes: proposal.notes.map(redactSecret),
+                };
+
+                record.status = "passed";
+                record.proposedConfig = result;
+                record.finishedAt = new Date().toISOString();
+                await upsertRunRecord(record);
+                publishAutodetectDone(runId, result);
+                return { runId, status: record.status };
+            } finally {
+                await endRun();
+            }
+        } catch (error) {
+            return await fail("errored", `Auto-detect failed: ${msg(error)}`);
+        } finally {
+            releaseSlot();
+        }
+    } finally {
+        autodetectInFlight.delete(flightKey);
+    }
+}
+
+export function triggerAutodetectInBackground(input: AutodetectInput): string {
+    const runId = `${slug(input.repo)}__autodetect-${stamp()}`;
+    void autodetectProject({ ...input, runId }).catch((error) => {
+        logger.warn(`Auto-detect ${runId} crashed: ${msg(error)}`);
     });
     return runId;
 }

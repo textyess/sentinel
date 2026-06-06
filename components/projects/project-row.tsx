@@ -31,12 +31,25 @@ function ReadinessBadge({
     label,
     okText,
     warnText,
+    neutral,
+    neutralText,
 }: {
     ok: boolean;
     label: string;
     okText: string;
     warnText: string;
+    // Render in a muted, non-warning tone (e.g. "no login needed") instead of ok/warn.
+    neutral?: boolean;
+    neutralText?: string;
 }) {
+    if (neutral) {
+        return (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                <span className="size-1.5 rounded-full bg-muted-foreground/50" />
+                {label}: {neutralText}
+            </span>
+        );
+    }
     return (
         <span
             className={cn(
@@ -65,7 +78,9 @@ export function ProjectRow({
     const updateBaseline = useUpdateBaseline();
     const remove = useDeleteProject();
 
-    const ready = project.graphPresent && project.credsConfigured;
+    // A public project (authRequired === false) needs no credentials to be "ready".
+    const credsOk = project.authRequired === false || project.credsConfigured;
+    const ready = project.graphPresent && credsOk;
 
     function onVerify(e: FormEvent<HTMLFormElement>) {
         e.preventDefault();
@@ -129,7 +144,11 @@ export function ProjectRow({
                     />
                 </TooltipTrigger>
                 <TooltipContent>
-                    {ready ? "Ready — auto-verify active" : "Auto-verify paused until baseline + credentials are set"}
+                    {ready
+                        ? "Ready — auto-verify active"
+                        : project.authRequired === false
+                          ? "Auto-verify paused until the baseline is built"
+                          : "Auto-verify paused until baseline + credentials are set"}
                 </TooltipContent>
             </Tooltip>
 
@@ -151,7 +170,14 @@ export function ProjectRow({
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     <ReadinessBadge ok={project.graphPresent} label="baseline" okText="ready" warnText="needs crawl" />
-                    <ReadinessBadge ok={project.credsConfigured} label="creds" okText="set" warnText="missing" />
+                    <ReadinessBadge
+                        ok={project.credsConfigured}
+                        label="creds"
+                        okText="set"
+                        warnText="missing"
+                        neutral={project.authRequired === false}
+                        neutralText="no login needed"
+                    />
                 </div>
             </div>
 

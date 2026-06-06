@@ -154,7 +154,7 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
     const { adapter, targetUrl, reasoner, env, allowProdWrites } = args;
 
     const credentials = adapter.credentials;
-    if (!credentials) {
+    if (adapter.authRequired && !credentials) {
         throw new Error(`No login configured for ${adapter.displayName} — set the project's credential env vars.`);
     }
 
@@ -179,9 +179,13 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
     let results: StepResult[] = [];
     let verdict: Verdict = { outcome: "uncertain", confidence: "low", summary: "Not executed.", evidence: [] };
     try {
-        logger.info("Authenticating ...");
-        await performLogin(session.page, adapter.auth, credentials, { timeoutMs: env.loginTimeoutMs });
-        logger.success("Authenticated. Executing the plan ...");
+        if (adapter.authRequired && credentials) {
+            logger.info("Authenticating ...");
+            await performLogin(session.page, adapter.auth, credentials, { timeoutMs: env.loginTimeoutMs });
+            logger.success("Authenticated. Executing the plan ...");
+        } else {
+            logger.info("No login required — executing the plan directly ...");
+        }
         // The one direct load: opening the app at its entry point (what a user does
         // when they follow a link/bookmark). Every page-to-page move after this is a
         // click through the app's own menus — see navigateLikeUser in the executor.

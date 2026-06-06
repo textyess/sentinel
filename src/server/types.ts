@@ -49,14 +49,37 @@ export interface MentionLedger {
 
 export type RunStatus = "queued" | "running" | "passed" | "failed" | "uncertain" | "blocked" | "errored";
 
+/** Per-field provenance for an auto-detected config, surfaced beside each value in the UI. */
+export interface AutodetectFieldMeta {
+    confidence: "high" | "medium" | "low";
+    source: string;
+}
+
+/**
+ * The output of an "autodetect" onboarding run: a proposed generic-project config a
+ * human reviews before registering. `adapter.emailEnv`/`passwordEnv` are env-var NAMES
+ * (derived from the repo), never raw secrets. `allowedMutationPatterns` is the read-only
+ * safety boundary and is proposed only — applied solely after explicit confirmation.
+ */
+export interface AutodetectProposal {
+    repo: string;
+    baselineUrl: string;
+    previewEnvIncludes: string;
+    /** False when the detector found the app needs no login. */
+    authRequired: boolean;
+    adapter: GenericProjectConfig;
+    fieldMeta: Record<string, AutodetectFieldMeta>;
+    notes: string[];
+}
+
 export interface RunRecord {
     runId: string;
     projectId: string;
     repo: string;
     pr: number;
     title: string;
-    /** Absent is treated as "verify"; "crawl" runs are excluded from the gallery. */
-    kind?: "verify" | "crawl";
+    /** Absent is treated as "verify"; "crawl" and "autodetect" runs are excluded from the gallery. */
+    kind?: "verify" | "crawl" | "autodetect";
     status: RunStatus;
     /** The comment id that triggered the run, or null for a manual trigger. */
     triggerCommentId: number | null;
@@ -65,6 +88,8 @@ export interface RunRecord {
     /** Absolute path on disk — NEVER sent to the browser (exposed as a URL instead). */
     videoPath: string | null;
     verdict: Verdict | null;
+    /** Set only for "autodetect" runs — the proposed config the dashboard pre-fills. */
+    proposedConfig?: AutodetectProposal | null;
     startedAt: string;
     finishedAt: string | null;
     error: string | null;

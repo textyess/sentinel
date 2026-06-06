@@ -73,6 +73,13 @@ export function useVerifyProject() {
     });
 }
 
+export function useAutodetect() {
+    return useMutation({
+        mutationFn: (body: { repo: string; baselineUrl: string | null; previewEnvIncludes?: string }) =>
+            api.autodetect(body),
+    });
+}
+
 export function useDeleteRun() {
     const qc = useQueryClient();
     return useMutation({
