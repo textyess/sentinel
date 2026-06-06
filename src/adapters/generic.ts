@@ -1,8 +1,8 @@
 import type { AuthStrategy, DatastoreTarget, RegExpSource, RepoAdapter, SafetyConfig } from "../core/types";
 
 /**
- * A repo-agnostic adapter for ANY web app exposed at a (preview) URL. Unlike the
- * TextYess adapter it reads NO local files and knows NO app-specific strings — all
+ * A repo-agnostic adapter for ANY web app exposed at a (preview) URL. Unlike a
+ * built-in adapter it reads NO local files and knows NO app-specific strings — all
  * of those come from the project's registration config. The production preflight's
  * remote-host fail-safe clamps every non-local target (e.g. *.vercel.app) to
  * read-only with zero extra code here.

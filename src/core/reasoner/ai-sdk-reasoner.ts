@@ -83,7 +83,7 @@ class AiSdkReasoner implements Reasoner {
     }
 }
 
-/** Claude on Amazon Bedrock — same path brain0 uses (EU inference profiles, AWS SigV4 creds). */
+/** Claude on Amazon Bedrock (EU inference profiles, AWS SigV4 creds). */
 function bedrockModel(modelId: string): ChatModel {
     const bedrock = createAmazonBedrock({
         region: process.env.AWS_REGION || "eu-central-1",

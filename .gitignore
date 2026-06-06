@@ -5,6 +5,9 @@
 .env
 .env.local
 
+# Private first-party adapter overlay (not part of the open-source surface)
+src/adapters/private/
+
 # Build / cache
 dist/
 .turbo/

@@ -1,8 +1,8 @@
 import type { GenericProjectConfig } from "../adapters/generic";
 import type { Verdict } from "../core/verify/types";
 
-/** Which adapter backs a registered project. */
-export type AdapterKind = "textyess" | "generic";
+/** Which adapter backs a registered project: "generic" (config-driven) or a registered built-in kind. */
+export type AdapterKind = string;
 
 /**
  * A registered project. Credentials are referenced by env-var NAME inside the
@@ -19,7 +19,7 @@ export interface ProjectRecord {
     previewEnvIncludes: string;
     /** The mention that triggers a run, e.g. "@sentinel". */
     mentionHandle: string;
-    /** Generic adapter config; null when adapterKind === "textyess". */
+    /** Generic adapter config; null for built-in adapters. */
     adapter: GenericProjectConfig | null;
     /** URL the baseline crawl maps (verify still targets the PR preview). Null → fall back to SENTINEL_BASE_URL. */
     baselineUrl?: string | null;

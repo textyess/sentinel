@@ -186,7 +186,7 @@ function setupForm() {
     form.innerHTML = `
         <div class="grid-2">
             <div><label>Repo (owner/name)</label><input name="repo" placeholder="acme/web" required /></div>
-            <div><label>Adapter</label><select name="adapterKind"><option value="generic">generic</option><option value="textyess">textyess</option></select></div>
+            <div><label>Adapter</label><select name="adapterKind"><option value="generic">generic</option></select></div>
         </div>
         <div class="grid-2">
             <div><label>Preview env contains</label><input name="previewEnvIncludes" value="web" /></div>
@@ -224,6 +224,15 @@ function setupForm() {
     };
     kind.addEventListener("change", syncKind);
     syncKind();
+
+    // Populate the adapter dropdown from the registry (generic + any built-ins).
+    api("/api/adapters")
+        .then((d) => {
+            const kinds = d && Array.isArray(d.kinds) && d.kinds.length ? d.kinds : ["generic"];
+            kind.innerHTML = kinds.map((k) => `<option value="${k}">${k}</option>`).join("");
+            syncKind();
+        })
+        .catch(() => {});
 
     form.addEventListener("submit", async (e) => {
         e.preventDefault();
