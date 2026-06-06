@@ -54,8 +54,10 @@ ENV NODE_ENV=production \
     SENTINEL_HEADLESS=true \
     SENTINEL_OUTPUT_DIR=/data
 
+# Mount a persistent volume here (Railway Volume, or the compose `sentinel-data`
+# volume) so state survives redeploys. No Dockerfile VOLUME instruction: Railway's
+# builder rejects it ("use Railway Volumes"), and it isn't needed for local Docker.
 RUN mkdir -p /data
-VOLUME ["/data"]
 
 EXPOSE 4317
 ENTRYPOINT ["/usr/bin/tini", "--"]
