@@ -51,8 +51,9 @@ pnpm verify <N>          # add --plan-only to just generate the to-do plan
 
 # Dashboard: a local UI to register repos, watch live runs, and browse the video
 # gallery. Tag Sentinel (e.g. "@sentinel") on a PR and it records a run + posts a
-# verdict back. Opens on http://127.0.0.1:4317.
-pnpm ui
+# verdict back. One server (UI + API) on http://127.0.0.1:4317.
+pnpm dev                 # Next.js dev server with hot-reload (also: pnpm ui)
+pnpm build && pnpm start # production build, then serve
 
 # Typecheck.
 pnpm typecheck
@@ -62,7 +63,10 @@ Artifacts (videos, screenshots, the interaction graph, run manifests) land in `.
 
 ## Dashboard
 
-`pnpm ui` starts a local, read-only dashboard (no extra dependencies — `node:http` + SSE):
+The dashboard is a single **Next.js** app (`app/`) — one server handles both the UI and the
+API, so `pnpm dev` (or `pnpm build && pnpm start`) is all it takes. The UI is React + Tailwind +
+shadcn/ui; the API is a set of route handlers that wrap the same read-only engine the CLI uses,
+with live runs streamed over SSE and the mention poller started from `instrumentation.ts`.
 
 - **Register a project** — a GitHub repo (`owner/name`) with a generic adapter you configure in the form (login recipe, preview-env hint, and the *names* of the env vars holding its test credentials — secrets are never stored, only referenced). First-party apps with fixed, in-code knowledge can ship a built-in adapter instead (see `src/adapters/example.ts`).
 - **Tag to trigger** — the server polls registered repos for PR comments that `@`-mention Sentinel. On a mention it resolves the PR's preview deployment, walks the affected flows in a recorded browser, judges `pass / fail / uncertain`, and posts the verdict back as a comment (with a hidden marker so it never replies to itself).
@@ -98,7 +102,11 @@ src/
     config.ts   # env + paths
     types.ts    # RepoAdapter contract
   adapters/     # per-app config (login, routes, preview, safety)
+  server/       # dashboard services: API logic, poller, runner, SSE hub, store
   cli.ts        # the `sentinel` CLI
+app/            # Next.js dashboard: UI (page + components) + API route handlers
+components/     # shadcn/ui + feature components
+instrumentation.ts  # starts the mention poller on server boot
 ```
 
 ## License

@@ -78,6 +78,12 @@ export interface RepoAdapter {
     baseUrl: string;
     ports: PortMap;
     auth: AuthStrategy;
+    /**
+     * When false, the app needs no login: the engine skips performLogin and does not
+     * require credentials. `auth` stays present (its login fields are inert) and the
+     * production preflight + read-only guard still run unchanged.
+     */
+    authRequired: boolean;
     safety: SafetyConfig;
     /** Optional seed list of known routes to accelerate Phase 1 crawling. */
     knownRoutes: string[];

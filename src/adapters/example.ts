@@ -35,6 +35,7 @@ export function createExampleAdapter(env: EnvConfig): RepoAdapter {
         displayName: "Example App",
         baseUrl,
         ports: { web: 3000 },
+        authRequired: true,
         auth: {
             loginPath: "/login",
             emailLabel: "Email",
@@ -54,7 +55,9 @@ export function createExampleAdapter(env: EnvConfig): RepoAdapter {
             const touched = changedFiles.length > 0;
             return {
                 routes: [],
-                notes: [touched ? "Example adapter: no route mapping configured — replaying a default set." : "No changes."],
+                notes: [
+                    touched ? "Example adapter: no route mapping configured — replaying a default set." : "No changes.",
+                ],
             };
         },
         async resolveDatastoreTargets(): Promise<DatastoreTarget[]> {
