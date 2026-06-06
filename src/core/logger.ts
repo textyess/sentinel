@@ -20,8 +20,15 @@ type Sink = (line: LogLine) => void;
  * stream a run's progress to a browser without threading a logger through the
  * ~10 core call sites.
  */
-const runScope = new AsyncLocalStorage<{ runId: string }>();
-const sinkMap = new Map<string, Set<Sink>>();
+// Anchored to globalThis so the run-scope and sink registry stay a single instance
+// even when a bundler (e.g. Next) splits the server into separate module graphs — the
+// SSE route and the run producer can otherwise hold different maps in the same process.
+const globalState = globalThis as {
+    __sentinelRunScope?: AsyncLocalStorage<{ runId: string }>;
+    __sentinelProgressSinks?: Map<string, Set<Sink>>;
+};
+const runScope = (globalState.__sentinelRunScope ??= new AsyncLocalStorage<{ runId: string }>());
+const sinkMap = (globalState.__sentinelProgressSinks ??= new Map<string, Set<Sink>>());
 
 export function runWithProgress<T>(runId: string, fn: () => Promise<T>): Promise<T> {
     return runScope.run({ runId }, fn);

@@ -1,6 +1,7 @@
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import { loadEnvConfig } from "../index";
+import { singleton } from "./singleton";
 import type { MentionLedger, ProjectRecord, RunRecord } from "./types";
 
 /** All server state lives under the same output dir the rest of Sentinel uses. */
@@ -21,7 +22,7 @@ function ledgerFile(adapterId: string): string {
 }
 
 /** One async mutex per file so concurrent upserts serialize (read-modify-write safety). */
-const fileLocks = new Map<string, Promise<unknown>>();
+const fileLocks = singleton("store.fileLocks", () => new Map<string, Promise<unknown>>());
 function withLock<T>(file: string, fn: () => Promise<T>): Promise<T> {
     const prev = fileLocks.get(file) ?? Promise.resolve();
     const result = prev.then(fn, fn);

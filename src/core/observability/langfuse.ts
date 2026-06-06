@@ -28,25 +28,41 @@ function costFor(model: string, usage: Usage): { input: number; output: number; 
     return { input, output, total: input + output };
 }
 
-let client: Langfuse | null = null;
-let trace: ReturnType<Langfuse["trace"]> | null = null;
-const totals: RunTotals = { inputTokens: 0, outputTokens: 0, calls: 0, costUsd: 0 };
+// Anchored to globalThis so the per-run trace + cost totals stay genuinely process-global
+// (the maxConcurrent=1 invariant relies on it) even when a bundler splits the server.
+const state = ((
+    globalThis as {
+        __sentinelLangfuse?: {
+            client: Langfuse | null;
+            trace: ReturnType<Langfuse["trace"]> | null;
+            totals: RunTotals;
+        };
+    }
+).__sentinelLangfuse ??= {
+    client: null,
+    trace: null,
+    totals: { inputTokens: 0, outputTokens: 0, calls: 0, costUsd: 0 },
+});
 
 /** Begin a run trace. Enables Langfuse export when keys are present; cost is tallied either way. */
 export function startRun(name: string, metadata: Record<string, unknown>): boolean {
-    totals.inputTokens = 0;
-    totals.outputTokens = 0;
-    totals.calls = 0;
-    totals.costUsd = 0;
+    state.totals.inputTokens = 0;
+    state.totals.outputTokens = 0;
+    state.totals.calls = 0;
+    state.totals.costUsd = 0;
     const secretKey = process.env.LANGFUSE_SECRET_KEY;
     const publicKey = process.env.LANGFUSE_PUBLIC_KEY;
     if (!secretKey || !publicKey) {
-        client = null;
-        trace = null;
+        state.client = null;
+        state.trace = null;
         return false;
     }
-    client = new Langfuse({ secretKey, publicKey, baseUrl: process.env.LANGFUSE_BASEURL || process.env.LANGFUSE_HOST });
-    trace = client.trace({ name, metadata });
+    state.client = new Langfuse({
+        secretKey,
+        publicKey,
+        baseUrl: process.env.LANGFUSE_BASEURL || process.env.LANGFUSE_HOST,
+    });
+    state.trace = state.client.trace({ name, metadata });
     return true;
 }
 
@@ -59,11 +75,11 @@ export function recordGeneration(params: {
     output?: unknown;
 }): void {
     const cost = costFor(params.model, params.usage);
-    totals.inputTokens += params.usage.input;
-    totals.outputTokens += params.usage.output;
-    totals.calls += 1;
-    totals.costUsd += cost.total;
-    trace?.generation({
+    state.totals.inputTokens += params.usage.input;
+    state.totals.outputTokens += params.usage.output;
+    state.totals.calls += 1;
+    state.totals.costUsd += cost.total;
+    state.trace?.generation({
         name: params.label,
         model: params.model,
         input: params.input,
@@ -80,20 +96,20 @@ export function recordGeneration(params: {
 }
 
 export function runTotals(): RunTotals {
-    return { ...totals };
+    return { ...state.totals };
 }
 
 export function tracingEnabled(): boolean {
-    return trace !== null;
+    return state.trace !== null;
 }
 
 /** Flush to Langfuse and return the trace id (null if tracing was disabled). */
 export async function endRun(): Promise<{ traceId: string | null }> {
-    const traceId = trace?.id ?? null;
-    if (client) {
-        await client.flushAsync().catch(() => {});
+    const traceId = state.trace?.id ?? null;
+    if (state.client) {
+        await state.client.flushAsync().catch(() => {});
     }
-    client = null;
-    trace = null;
+    state.client = null;
+    state.trace = null;
     return { traceId };
 }

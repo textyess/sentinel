@@ -86,8 +86,13 @@ async function listDirNames(dir: string): Promise<string[]> {
 export async function indexRuns(): Promise<RunSummary[]> {
     const records = await listRunRecords();
     const recordDirs = new Set(records.map((r) => r.runDir).filter((d): d is string => Boolean(d)));
-    // Crawl runs have no verdict/video — keep them out of the verdict gallery.
-    const summaries: RunSummary[] = records.filter((r) => (r.kind ?? "verify") !== "crawl").map(recordToSummary);
+    // Crawl + autodetect runs have no verdict/video — keep them out of the verdict gallery.
+    const summaries: RunSummary[] = records
+        .filter((r) => {
+            const kind = r.kind ?? "verify";
+            return kind !== "crawl" && kind !== "autodetect";
+        })
+        .map(recordToSummary);
 
     const root = outputDir();
     for (const adapterId of await listDirNames(root)) {

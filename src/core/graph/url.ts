@@ -58,6 +58,11 @@ export function stripQuery(url: string): string {
 
 /** True when a landed URL is the login page (session lost / auth wall), matched on path boundary. */
 export function isLoginPath(url: string, loginPath: string): boolean {
+    // A root/empty loginPath would match every page ("/" startsWith makes the bounce check
+    // meaningless), so treat it as "no detectable login route" and never flag.
+    if (!loginPath || loginPath === "/") {
+        return false;
+    }
     const pathname = pathnameOf(url);
     return pathname === loginPath || pathname.startsWith(`${loginPath}/`);
 }

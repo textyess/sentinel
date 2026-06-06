@@ -51,11 +51,12 @@ export async function runCrawlForProject(args: RunCrawlArgs): Promise<RunCrawlRe
     const { adapter, env, outputDir, maxPages, actuationsPerPage, reasoner, gitSha } = args;
 
     const credentials = adapter.credentials;
-    if (!credentials) {
+    if (adapter.authRequired && !credentials) {
         throw new Error(`No login configured for ${adapter.displayName} — set the project's credential env vars.`);
     }
 
-    // Crawl never writes: literal false, no parameter to flip it.
+    // Crawl never writes: literal false, no parameter to flip it. The preflight +
+    // read-only guard run regardless of whether the app needs a login.
     const preflight = await runProductionPreflight(adapter, false);
     await ensureAppReachable(adapter.baseUrl);
 
@@ -63,9 +64,13 @@ export async function runCrawlForProject(args: RunCrawlArgs): Promise<RunCrawlRe
     const session = await createSession({ baseUrl: adapter.baseUrl, headless: env.headless, safety });
 
     try {
-        logger.info("Authenticating ...");
-        await performLogin(session.page, adapter.auth, credentials, { timeoutMs: env.loginTimeoutMs });
-        logger.success("Authenticated. Crawling ...");
+        if (adapter.authRequired && credentials) {
+            logger.info("Authenticating ...");
+            await performLogin(session.page, adapter.auth, credentials, { timeoutMs: env.loginTimeoutMs });
+            logger.success("Authenticated. Crawling ...");
+        } else {
+            logger.info("No login required — crawling directly ...");
+        }
         const graph = await crawl(session, adapter, {
             maxPages,
             settleMs: 6000,

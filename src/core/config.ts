@@ -2,9 +2,14 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as dotenv from "dotenv";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-/** The Sentinel package root — two levels up from src/core. */
-export const PACKAGE_ROOT = path.resolve(here, "..", "..");
+/**
+ * The Sentinel package root. Honors SENTINEL_PACKAGE_ROOT first: a bundler (e.g. Next)
+ * bakes import.meta.url to a build-time absolute path, so the launcher sets this env to
+ * its working dir. Otherwise it's two levels up from src/core (the `tsx`/CLI path).
+ */
+export const PACKAGE_ROOT = process.env.SENTINEL_PACKAGE_ROOT
+    ? path.resolve(process.env.SENTINEL_PACKAGE_ROOT)
+    : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 /**
  * The repo whose local files (e.g. .env) an adapter may inspect. Standalone, that
  * is this package; set SENTINEL_REPO_ROOT to point at a target repo/monorepo.

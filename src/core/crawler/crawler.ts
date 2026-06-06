@@ -73,7 +73,10 @@ export async function crawl(
     const errors: string[] = [];
 
     const queue: QueueItem[] = [];
-    for (const route of adapter.knownRoutes) {
+    // Always seed the app root so a project with no explicit knownRoutes (e.g. a public
+    // app registered without auto-detect) still has an entry point; the breadth-first
+    // crawl discovers the rest by following internal links from there.
+    for (const route of ["/", ...adapter.knownRoutes]) {
         const norm = normalizePath(route, baseUrl).path;
         if (!queuedPaths.has(norm)) {
             queuedPaths.add(norm);

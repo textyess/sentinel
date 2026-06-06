@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Sentinel">
+  <g fill="none" stroke="#f3f1ea" stroke-width="15" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 18 100 Q 100 42 182 100 Q 100 158 18 100 Z"></path>
+    <circle cx="100" cy="100" r="32"></circle>
+    <circle cx="100" cy="100" r="12" fill="#f3f1ea" stroke="none"></circle>
+  </g>
+</svg>

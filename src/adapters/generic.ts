@@ -22,6 +22,12 @@ export interface GenericAuthConfig {
 
 export interface GenericProjectConfig {
     auth: GenericAuthConfig;
+    /**
+     * When false, the app is public — Sentinel crawls/verifies it without signing in
+     * and needs no credentials. Defaults to true (login required). `auth` stays present
+     * but its login fields are inert.
+     */
+    authRequired?: boolean;
     /** Names of the env vars holding the test credentials — never the raw secrets. */
     emailEnv: string;
     passwordEnv: string;
@@ -168,10 +174,13 @@ export function createGenericAdapter(
     overrides?: { baseUrl?: string },
 ): RepoAdapter {
     const baseUrl = overrides?.baseUrl ?? "";
+    const authRequired = config.authRequired ?? true;
     const auth: AuthStrategy = { ...config.auth };
     const safety: SafetyConfig = {
         readOnly: true,
-        allowedMutationPatterns: config.allowedMutationPatterns,
+        // A public (no-login) app has no auth POST to permit — never allow a write
+        // through the read-only guard for it, regardless of how the config was persisted.
+        allowedMutationPatterns: authRequired ? config.allowedMutationPatterns : [],
         telemetryPatterns: GENERIC_SAFETY_DEFAULTS.telemetryPatterns,
         destructiveControlPatterns:
             config.destructiveControlPatterns ?? GENERIC_SAFETY_DEFAULTS.destructiveControlPatterns,
@@ -187,6 +196,7 @@ export function createGenericAdapter(
         baseUrl,
         ports: { web: 443 },
         auth,
+        authRequired,
         safety,
         knownRoutes: config.knownRoutes ?? [],
         previewEnvIncludes: config.previewEnvIncludes,

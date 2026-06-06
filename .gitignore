@@ -14,3 +14,16 @@ dist/
 *.tsbuildinfo
 node_modules/
 .DS_Store
+
+# Next.js
+.next/
+next-env.d.ts
+/out/
+
+# Lock files
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# Local agent / brainstorming artifacts
+docs/superpowers/
