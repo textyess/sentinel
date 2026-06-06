@@ -33,4 +33,3 @@ try {
         throw error;
     }
 }
-}
