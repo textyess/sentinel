@@ -1,7 +1,13 @@
 // DTOs mirroring Sentinel's server API (src/server/types.ts + api.ts). Kept as a
 // thin, explicit copy so the frontend has no build-time coupling to the backend.
 
-export type AdapterKind = "textyess" | "generic";
+// "generic" (config-driven) or any registered built-in kind — the dashboard fetches
+// the available kinds from /api/adapters, so this stays an open string.
+export type AdapterKind = string;
+
+export interface Adapters {
+    kinds: string[];
+}
 
 export type RunStatus = "queued" | "running" | "passed" | "failed" | "uncertain" | "blocked" | "errored";
 

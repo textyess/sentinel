@@ -4,6 +4,7 @@ import type { CreateProjectInput } from "@/lib/types";
 
 export const keys = {
     health: ["health"] as const,
+    adapters: ["adapters"] as const,
     projects: ["projects"] as const,
     runs: ["runs"] as const,
     env: ["env"] as const,
@@ -15,6 +16,10 @@ export function useHealth() {
         queryFn: api.health,
         refetchInterval: 15_000,
     });
+}
+
+export function useAdapters(enabled: boolean) {
+    return useQuery({ queryKey: keys.adapters, queryFn: api.adapters, enabled, staleTime: Number.POSITIVE_INFINITY });
 }
 
 export function useProjects() {

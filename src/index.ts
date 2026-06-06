@@ -1,11 +1,11 @@
 /**
- * Public surface of @textyess/qa-agent. Phase 1 (the autonomous crawler) and
+ * Public surface of the Sentinel package. Phase 1 (the autonomous crawler) and
  * later phases import the engine from here rather than reaching into core/ paths.
  */
-export { createTextyessAdapter, getAdapter } from "./adapters";
+export { adapterForProject, adapterKinds, getAdapter, isAdapterKind, registerBuiltinAdapter } from "./adapters";
 export type { GenericAuthConfig, GenericProjectConfig } from "./adapters/generic";
 export { createGenericAdapter, GENERIC_SAFETY_DEFAULTS } from "./adapters/generic";
-export { adapterForProject } from "./adapters/registry";
+export type { BuiltinAdapterFactory } from "./adapters/registry";
 export type { LoginResult } from "./core/auth/login";
 export { performLogin } from "./core/auth/login";
 export { ensureAppReachable } from "./core/bringup/app";

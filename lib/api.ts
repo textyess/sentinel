@@ -1,4 +1,5 @@
 import type {
+    Adapters,
     CreateProjectInput,
     EnvPresence,
     Health,
@@ -37,6 +38,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
     health: () => request<Health>("/api/health"),
+
+    adapters: () => request<Adapters>("/api/adapters"),
 
     projects: () => request<ProjectView[]>("/api/projects"),
     createProject: (body: CreateProjectInput) =>

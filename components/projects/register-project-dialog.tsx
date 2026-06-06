@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { useCreateProject } from "@/hooks/queries";
+import { useAdapters, useCreateProject } from "@/hooks/queries";
 import { ApiError } from "@/lib/api";
 import type { AdapterKind, CreateProjectInput } from "@/lib/types";
 
@@ -47,6 +47,8 @@ export function RegisterProjectDialog({
     onOpenChange: (open: boolean) => void;
 }) {
     const [adapterKind, setAdapterKind] = useState<AdapterKind>("generic");
+    const { data: adapters } = useAdapters(open);
+    const kinds = adapters?.kinds ?? ["generic"];
     const create = useCreateProject();
 
     function onSubmit(e: FormEvent<HTMLFormElement>) {
@@ -121,14 +123,19 @@ export function RegisterProjectDialog({
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="generic">Generic app</SelectItem>
-                                        <SelectItem value="textyess">TextYess</SelectItem>
+                                        {kinds.map((kind) => (
+                                            <SelectItem key={kind} value={kind}>
+                                                {kind === "generic"
+                                                    ? "Generic app"
+                                                    : kind.charAt(0).toUpperCase() + kind.slice(1)}
+                                            </SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                                 <p className="text-xs text-muted-foreground">
                                     {adapterKind === "generic"
                                         ? "Describe how to log in below."
-                                        : "Uses the built-in TextYess adapter."}
+                                        : `Uses the built-in ${adapterKind} adapter.`}
                                 </p>
                             </div>
                         </div>

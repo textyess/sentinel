@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { z } from "zod";
-import { isGhAuthenticated, llmCredentialIssue, loadEnvConfig } from "../index";
+import { adapterKinds, isAdapterKind, isGhAuthenticated, llmCredentialIssue, loadEnvConfig } from "../index";
 import { HttpError } from "./errors";
 import { indexRuns, resolveRunArtifacts } from "./indexer";
 import { isPollerRunning } from "./poller";
@@ -39,13 +39,13 @@ const genericAdapterSchema = z.object({
 const projectSchema = z
     .object({
         repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/, "repo must be owner/name"),
-        adapterKind: z.enum(["textyess", "generic"]),
+        adapterKind: z.string().refine(isAdapterKind, "unknown adapter kind"),
         previewEnvIncludes: z.string().default("web"),
         mentionHandle: z.string().default("@sentinel"),
         baselineUrl: z.string().url().nullable().optional(),
         adapter: genericAdapterSchema.nullable().optional(),
     })
-    .refine((d) => d.adapterKind === "textyess" || Boolean(d.adapter), {
+    .refine((d) => d.adapterKind !== "generic" || Boolean(d.adapter), {
         message: "generic projects require an adapter config",
         path: ["adapter"],
     });
@@ -68,9 +68,9 @@ export async function getProjects(): Promise<ProjectView[]> {
     return projects.map((p) => {
         const graphPresent = fs.existsSync(path.join(env.outputDir, p.id, "graph", "latest.json"));
         const credsConfigured =
-            p.adapterKind === "textyess"
-                ? Boolean(env.email && env.password)
-                : Boolean(p.adapter && process.env[p.adapter.emailEnv] && process.env[p.adapter.passwordEnv]);
+            p.adapterKind === "generic"
+                ? Boolean(p.adapter && process.env[p.adapter.emailEnv] && process.env[p.adapter.passwordEnv])
+                : Boolean(env.email && env.password);
         return { ...p, graphPresent, credsConfigured };
     });
 }
@@ -81,8 +81,9 @@ export async function createProject(body: unknown): Promise<ProjectRecord> {
         throw new HttpError(400, parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
     }
     const d = parsed.data;
-    // textyess uses its fixed adapter id so paths line up with createTextyessAdapter.
-    const id = d.adapterKind === "textyess" ? "textyess" : slug(d.repo);
+    // A built-in adapter uses its (fixed) kind as the id so output paths line up
+    // with its adapter; a generic project is keyed by a slug of its repo.
+    const id = d.adapterKind === "generic" ? slug(d.repo) : d.adapterKind;
     const record: ProjectRecord = {
         id,
         repo: d.repo,
@@ -143,6 +144,11 @@ export async function triggerCrawl(projectId: string, body: unknown): Promise<{ 
     }
     const runId = triggerCrawlInBackground(project, parsed.data);
     return { runId, status: "running" };
+}
+
+/** Adapter kinds the registration form may offer (generic + any registered built-ins). */
+export function getAdapters(): { kinds: string[] } {
+    return { kinds: adapterKinds() };
 }
 
 export async function getRuns(): Promise<RunSummary[]> {
