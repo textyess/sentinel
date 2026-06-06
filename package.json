@@ -18,8 +18,8 @@
     "build": "next build",
     "start": "next start -p ${SENTINEL_UI_PORT:-4317} -H 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "lint": "biome check src app components hooks lib instrumentation.ts next.config.ts",
-    "format": "biome check --write src app components hooks lib instrumentation.ts next.config.ts",
+    "lint": "biome check src app components hooks lib instrumentation.ts instrumentation-node.ts next.config.ts",
+    "format": "biome check --write src app components hooks lib instrumentation.ts instrumentation-node.ts next.config.ts",
     "clean": "rm -rf .sentinel .turbo .next dist"
   },
   "dependencies": {

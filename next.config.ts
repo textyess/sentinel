@@ -7,9 +7,20 @@ import type { NextConfig } from "next";
 process.env.SENTINEL_PACKAGE_ROOT ||= process.cwd();
 
 const nextConfig: NextConfig = {
-    // Heavy / native / dynamic-require backend deps must stay out of the bundle and
-    // run as plain Node modules inside the route handlers and the poller.
-    serverExternalPackages: ["playwright", "langfuse"],
+    // The engine (src/index.ts) re-exports the Playwright driver, so every route
+    // handler + instrumentation transitively imports playwright-core, which carries a
+    // native `fsevents.node` and optional native deps. These must NOT be bundled —
+    // they run as plain Node `require()`s server-side. Missing the full set makes
+    // `next dev` fail with "fsevents.node is not supported in the browser".
+    serverExternalPackages: [
+        "playwright",
+        "playwright-core",
+        "langfuse",
+        "fsevents",
+        "electron",
+        "bufferutil",
+        "utf-8-validate",
+    ],
     // The repo lints with Biome, not ESLint.
     eslint: { ignoreDuringBuilds: true },
 };

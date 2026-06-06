@@ -1,15 +1,9 @@
-// Next calls register() once when the server process boots. This is where the
-// mention poller starts — Node runtime only, never during a build or an edge context.
+// Next runs register() once per server runtime on boot. The actual node-only work
+// (the engine import + the mention poller) lives in a separate module imported ONLY
+// under the nodejs guard, so the edge compilation of instrumentation never pulls in
+// Playwright (whose native fsevents.node is not bundleable for non-node targets).
 export async function register(): Promise<void> {
-    if (process.env.NEXT_RUNTIME !== "nodejs") {
-        return;
+    if (process.env.NEXT_RUNTIME === "nodejs") {
+        await import("./instrumentation-node");
     }
-    const fs = await import("node:fs");
-    const path = await import("node:path");
-    const { loadEnvConfig } = await import("@/src/index");
-    const { startPoller } = await import("@/src/server/poller");
-
-    const env = loadEnvConfig();
-    fs.mkdirSync(path.join(env.outputDir, "server"), { recursive: true });
-    startPoller();
 }
