@@ -155,3 +155,70 @@ export type DoneEvent =
     | { kind: "autodetect"; proposal: AutodetectProposal };
 
 export type RunKind = "verify" | "crawl" | "autodetect";
+
+// ---- run report (a verify run's manifest, sanitized for the browser) --------
+
+export type StepAction = "navigate" | "click" | "type" | "select" | "hover" | "scroll" | "assert" | "wait";
+
+export interface PlanStep {
+    action: StepAction;
+    /** Human description of the target (a route for navigate, a control description otherwise). */
+    target: string;
+    /** Value to type/select, when applicable. */
+    value: string | null;
+    /** What should be visibly true after this step. */
+    expect: string;
+    /** Why this step exists — tied to the PR's change. */
+    reason: string;
+}
+
+export interface TestPlan {
+    /** What the plan verifies about the PR. */
+    goal: string;
+    /** Route to start from. */
+    startRoute: string;
+    steps: PlanStep[];
+    notes: string[];
+}
+
+export type StepStatus = "ok" | "failed" | "blocked" | "skipped";
+
+export interface NetworkError {
+    url: string;
+    status: number;
+}
+
+export interface StepResultView {
+    index: number;
+    step: PlanStep;
+    status: StepStatus;
+    /** What Sentinel observed (or why it failed / was blocked). */
+    observation: string;
+    screenshotUrl: string | null;
+    consoleErrors: string[];
+    networkErrors: NetworkError[];
+}
+
+export interface RunManifestView {
+    runId: string;
+    projectId: string;
+    repo: string;
+    pr: number;
+    title: string;
+    body: string;
+    headSha: string;
+    headRef: string;
+    targetUrl: string;
+    changedFiles: string[];
+    affectedRoutes: string[];
+    /** True when the run never wrote (read-only enforced). */
+    readOnly: boolean;
+    blockedWrites: number;
+    model: string;
+    plan: TestPlan;
+    results: StepResultView[];
+    verdict: Verdict;
+    videoUrl: string | null;
+    createdAt: string;
+    status: RunStatus;
+}

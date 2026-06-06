@@ -10,7 +10,7 @@ function outputDir(): string {
     return loadEnvConfig().outputDir;
 }
 
-function statusFromOutcome(outcome: VerifyManifest["verdict"]["outcome"]): RunStatus {
+export function statusFromOutcome(outcome: VerifyManifest["verdict"]["outcome"]): RunStatus {
     if (outcome === "pass") {
         return "passed";
     }
@@ -33,8 +33,13 @@ function manifestRunId(adapterId: string, dirName: string): string {
     return `${adapterId}__${dirName}`;
 }
 
-function videoUrl(runId: string, hasVideo: boolean): string | null {
+export function videoUrl(runId: string, hasVideo: boolean): string | null {
     return hasVideo ? `/api/runs/${encodeURIComponent(runId)}/video` : null;
+}
+
+/** Browser URL for a step screenshot stored under the run dir. Takes a filename or a relative path. */
+export function screenshotUrl(runId: string, fileOrPath: string): string {
+    return `/api/runs/${encodeURIComponent(runId)}/screenshots/${encodeURIComponent(path.basename(fileOrPath))}`;
 }
 
 function recordToSummary(r: RunRecord): RunSummary {

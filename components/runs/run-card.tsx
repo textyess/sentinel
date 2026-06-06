@@ -1,4 +1,5 @@
 import { FilmIcon, Loader2Icon, XIcon } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import { StatusBadge } from "@/components/status-badge";
@@ -78,9 +79,12 @@ export function RunCard({ run }: { run: RunSummary }) {
 
             <div className="grid gap-2 p-4">
                 <div className="flex items-start justify-between gap-2">
-                    <h3 className="truncate text-sm font-medium tracking-tight" title={run.title || `PR #${run.pr}`}>
+                    <Link
+                        href={`/runs/${encodeURIComponent(run.runId)}`}
+                        title={run.title || `PR #${run.pr}`}
+                        className="block min-w-0 truncate text-sm font-medium tracking-tight transition-colors hover:text-primary hover:underline">
                         {run.title || `PR #${run.pr}`}
-                    </h3>
+                    </Link>
                     {hasRepo ? (
                         <a
                             href={`https://github.com/${run.repo}/pull/${run.pr}`}

@@ -1,5 +1,5 @@
 import type { GenericProjectConfig } from "../adapters/generic";
-import type { Verdict } from "../core/verify/types";
+import type { PlanStep, StepResult, TestPlan, Verdict } from "../core/verify/types";
 
 /** Which adapter backs a registered project: "generic" (config-driven) or a registered built-in kind. */
 export type AdapterKind = string;
@@ -105,6 +105,51 @@ export interface RunSummary {
     outcome: Verdict["outcome"] | null;
     confidence: Verdict["confidence"] | null;
     summary: string;
+    /** URL (/api/runs/:runId/video) or null when no recording exists. */
+    videoUrl: string | null;
+    createdAt: string;
+    status: RunStatus;
+}
+
+/**
+ * A single executed step, browser-facing: the planned step plus what Sentinel observed.
+ * The on-disk relative screenshot path becomes a `/api/runs/:runId/screenshots/:name` URL.
+ */
+export interface StepResultView {
+    index: number;
+    step: PlanStep;
+    status: StepResult["status"];
+    observation: string;
+    /** URL (/api/runs/:runId/screenshots/:name) or null when no screenshot was captured. */
+    screenshotUrl: string | null;
+    consoleErrors: string[];
+    networkErrors: StepResult["networkErrors"];
+}
+
+/**
+ * Full run report DTO — the manifest a verify run produces, sanitized for the browser.
+ * Absolute paths (video) are dropped in favour of URLs; the manifest is already
+ * secret-redacted on disk. Backs the per-run report page.
+ */
+export interface RunManifestView {
+    runId: string;
+    projectId: string;
+    repo: string;
+    pr: number;
+    title: string;
+    body: string;
+    headSha: string;
+    headRef: string;
+    targetUrl: string;
+    changedFiles: string[];
+    affectedRoutes: string[];
+    /** True when the run never wrote (read-only enforced). */
+    readOnly: boolean;
+    blockedWrites: number;
+    model: string;
+    plan: TestPlan;
+    results: StepResultView[];
+    verdict: Verdict;
     /** URL (/api/runs/:runId/video) or null when no recording exists. */
     videoUrl: string | null;
     createdAt: string;
