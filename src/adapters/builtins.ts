@@ -24,8 +24,13 @@ try {
     overlay.registerPrivateAdapters?.(registerBuiltinAdapter);
 } catch (error) {
     const code = (error as { code?: string }).code;
-    // No overlay present (e.g. the open-source build) — generic adapters only.
-    if (code !== "ERR_MODULE_NOT_FOUND" && code !== "MODULE_NOT_FOUND") {
+    const message = (error as { message?: string }).message ?? "";
+    // Only swallow "overlay not found" — not a broken dependency inside the overlay.
+    const isOverlayMissing =
+        (code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND") &&
+        message.includes("private/index");
+    if (!isOverlayMissing) {
         throw error;
     }
+}
 }
