@@ -187,8 +187,11 @@ export function createGenericAdapter(
         productionMarkers: config.productionMarkers ?? GENERIC_SAFETY_DEFAULTS.productionMarkers,
         failClosedOnProduction: GENERIC_SAFETY_DEFAULTS.failClosedOnProduction,
     };
-    const email = process.env[config.emailEnv];
-    const password = process.env[config.passwordEnv];
+    // Per-project credentials (SENTINEL_<repo>_EMAIL/PASSWORD) win; fall back to the
+    // generic SENTINEL_EMAIL/PASSWORD so a single-app user configures one pair instead
+    // of duplicating the same login under a per-repo name.
+    const email = process.env[config.emailEnv] || process.env.SENTINEL_EMAIL;
+    const password = process.env[config.passwordEnv] || process.env.SENTINEL_PASSWORD;
 
     return {
         id,

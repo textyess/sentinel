@@ -103,7 +103,11 @@ export async function getProjects(): Promise<ProjectView[]> {
         const credsConfigured = !authRequired
             ? true
             : p.adapterKind === "generic"
-              ? Boolean(p.adapter && process.env[p.adapter.emailEnv] && process.env[p.adapter.passwordEnv])
+              ? Boolean(
+                    p.adapter &&
+                        (process.env[p.adapter.emailEnv] || env.email) &&
+                        (process.env[p.adapter.passwordEnv] || env.password),
+                )
               : Boolean(env.email && env.password);
         return { ...p, graphPresent, credsConfigured, authRequired };
     });
