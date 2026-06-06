@@ -16,7 +16,7 @@
     "dev": "next dev -p ${SENTINEL_UI_PORT:-4317} -H 127.0.0.1",
     "ui": "next dev -p ${SENTINEL_UI_PORT:-4317} -H 127.0.0.1",
     "build": "next build",
-    "start": "next start -p ${SENTINEL_UI_PORT:-4317} -H 127.0.0.1",
+    "start": "next start -p ${PORT:-${SENTINEL_UI_PORT:-4317}} -H ${SENTINEL_UI_HOST:-127.0.0.1}",
     "typecheck": "tsc --noEmit",
     "lint": "biome check src app components hooks lib instrumentation.ts instrumentation-node.ts next.config.ts",
     "format": "biome check --write src app components hooks lib instrumentation.ts instrumentation-node.ts next.config.ts",

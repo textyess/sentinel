@@ -10,7 +10,10 @@ function numEnv(value: string | undefined, fallback: number): number {
 
 export function loadServerConfig(): ServerConfig {
     return {
-        port: numEnv(process.env.SENTINEL_UI_PORT, 4317),
+        // PORT (injected by hosts like Railway) wins, matching the `start` script's
+        // bind precedence, so dashboardUrl()'s fallback reports the port we actually
+        // listen on; then SENTINEL_UI_PORT, then the default.
+        port: numEnv(process.env.PORT ?? process.env.SENTINEL_UI_PORT, 4317),
         pollMs: numEnv(process.env.SENTINEL_POLL_MS, 30000),
         // MAX_CONCURRENT=1 is a hard invariant for M1: the Langfuse trace/cost state
         // is process-global, so concurrent runs would cross-contaminate it.
@@ -24,5 +27,12 @@ export function loadServerConfig(): ServerConfig {
 }
 
 export function dashboardUrl(): string {
+    // A hosted deploy can advertise its real dashboard URL (used for the "view run"
+    // link in PR comments); without it, fall back to the localhost address the
+    // operator reaches it on.
+    const configured = process.env.SENTINEL_DASHBOARD_URL?.trim();
+    if (configured) {
+        return configured.replace(/\/+$/, "");
+    }
     return `http://127.0.0.1:${loadServerConfig().port}`;
 }

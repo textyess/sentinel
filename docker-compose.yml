@@ -1,0 +1,36 @@
+# Run Sentinel as a single always-on container on any Docker host.
+#   1. cp .env.example .env   &&   fill in GH_TOKEN + an LLM key + test creds
+#   2. docker compose up -d --build
+#   3. open http://127.0.0.1:4317 to register a repo + run a baseline crawl
+#
+# The dashboard is published on 127.0.0.1 only — keep it private. The bot reaches
+# GitHub outbound, so teammates can tag @sentinel without the UI being exposed.
+services:
+  sentinel:
+    build: .
+    image: sentinel-qa-agent
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Container-side values (also baked into the image; explicit here for clarity).
+      SENTINEL_UI_HOST: "0.0.0.0"
+      SENTINEL_OUTPUT_DIR: /data
+    ports:
+      # host:container — bound to localhost so the dashboard is never public.
+      - "127.0.0.1:4317:4317"
+    volumes:
+      # Persists registered projects, baseline graphs, run history, and recordings.
+      - sentinel-data:/data
+    # Chromium wants more shared memory than Docker's 64MB default (belt-and-suspenders
+    # alongside the --disable-dev-shm-usage flag the image already sets).
+    shm_size: "1gb"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4317/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+volumes:
+  sentinel-data:
