@@ -33,16 +33,15 @@ function HeaderStatus({
     outcome: "pass" | "fail" | "uncertain" | "complete" | null;
 }) {
     if (error) {
-        return <StatusBadge status="errored" label="errored" />;
+        return <StatusBadge status="errored" />;
     }
     if (outcome === "complete") {
-        return <StatusBadge status="passed" label="complete" />;
+        return <StatusBadge status="passed" label="Complete" />;
     }
     if (outcome) {
         return (
             <StatusBadge
                 status={outcome === "pass" ? "passed" : outcome === "fail" ? "failed" : "uncertain"}
-                label={outcome}
             />
         );
     }

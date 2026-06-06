@@ -149,7 +149,7 @@ async function serveSpa(req: http.IncomingMessage, res: http.ServerResponse, pat
     const indexPath = path.join(WEB_DIST, "index.html");
     if (!fs.existsSync(indexPath)) {
         sendJson(res, 503, {
-            error: "Dashboard not built. Run `pnpm ui:build` (or `pnpm --filter web build`) first.",
+            error: "Dashboard not built. Run `pnpm ui:build` first.",
         });
         return;
     }

@@ -12,7 +12,7 @@ export function VerdictCallout({ verdict, videoUrl }: { verdict: Verdict; videoU
     return (
         <div className={cn("grid gap-3 rounded-xl border p-4", ACCENT[verdict.outcome] ?? "border-border")}>
             <div className="flex items-center gap-2">
-                <StatusBadge status={outcomeStatus(verdict.outcome)} label={verdict.outcome} />
+                <StatusBadge status={outcomeStatus(verdict.outcome)} />
                 <span className="text-xs text-muted-foreground">{verdict.confidence} confidence</span>
             </div>
             <p className="text-sm leading-relaxed text-foreground/90">{verdict.summary}</p>
@@ -31,6 +31,7 @@ export function VerdictCallout({ verdict, videoUrl }: { verdict: Verdict; videoU
                     controls
                     preload="metadata"
                     src={videoUrl}
+                    aria-label="Run recording"
                     className="mt-1 aspect-video w-full rounded-lg bg-black"
                 />
             )}
@@ -47,7 +48,7 @@ export function CoverageCallout({ coverage }: { coverage: CrawlCoverage }) {
     ];
     return (
         <div className="grid gap-3 rounded-xl border border-pass/30 bg-pass/5 p-4">
-            <StatusBadge status="passed" label="baseline ready" />
+            <StatusBadge status="passed" label="Baseline ready" />
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {stats.map((s) => (
                     <div key={s.label} className="grid gap-0.5">

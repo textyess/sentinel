@@ -67,7 +67,15 @@ function SettingsForm({ env, onClose }: { env: EnvPresence; onClose: () => void 
         const f = new FormData(e.currentTarget);
         const updates: Record<string, string> = {};
         for (const field of CONFIG_FIELDS) {
-            updates[field.key] = String(f.get(field.key) ?? "").trim();
+            const current = String(f.get(field.key) ?? "").trim();
+            // The control's initial value: the echoed server value, else its displayed
+            // default (first option for a select, empty for text). Only write a key the
+            // user actually changed — never persist a default they didn't pick, and
+            // never issue a spurious clear for an untouched empty field.
+            const initial = env.values[field.key] ?? (field.type === "select" ? field.options[0] : "");
+            if (current !== initial) {
+                updates[field.key] = current;
+            }
         }
         for (const field of secretFields) {
             if (cleared.has(field.key)) {

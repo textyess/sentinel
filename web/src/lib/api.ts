@@ -2,6 +2,7 @@ import type {
     CreateProjectInput,
     EnvPresence,
     Health,
+    ProjectRecord,
     ProjectView,
     RunSummary,
     TriggerResult,
@@ -39,7 +40,7 @@ export const api = {
 
     projects: () => request<ProjectView[]>("/api/projects"),
     createProject: (body: CreateProjectInput) =>
-        request<ProjectView>("/api/projects", { method: "POST", body: JSON.stringify(body) }),
+        request<ProjectRecord>("/api/projects", { method: "POST", body: JSON.stringify(body) }),
     updateProject: (id: string, body: { baselineUrl: string | null }) =>
         request<ProjectView>(`/api/projects/${encodeURIComponent(id)}`, {
             method: "PATCH",

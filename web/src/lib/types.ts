@@ -42,6 +42,10 @@ export interface ProjectView {
     credsConfigured: boolean;
 }
 
+// POST /api/projects returns the base record — graphPresent/credsConfigured are
+// derived only by GET /api/projects, so the create response omits them.
+export type ProjectRecord = Omit<ProjectView, "graphPresent" | "credsConfigured">;
+
 export interface RunSummary {
     runId: string;
     projectId: string;

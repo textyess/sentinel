@@ -53,7 +53,9 @@ pnpm verify <N>          # add --plan-only to just generate the to-do plan
 # gallery. Tag Sentinel (e.g. "@sentinel") on a PR and it records a run + posts a
 # verdict back. Opens on http://127.0.0.1:4317.
 pnpm ui                  # builds the dashboard (web/) then serves it
-pnpm web:dev             # optional: Vite dev server with HMR, proxying the API
+# For UI development, run the API server and the Vite dev server side by side:
+pnpm ui:server           # the API on http://127.0.0.1:4317
+pnpm web:dev             # Vite HMR on http://127.0.0.1:5173, proxying /api to it
 
 # Typecheck.
 pnpm typecheck

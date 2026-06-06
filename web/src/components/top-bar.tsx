@@ -18,10 +18,10 @@ export function TopBar({
                         <ShieldCheckIcon className="size-4.5" />
                     </span>
                     <div className="leading-tight">
-                        <div className="text-sm font-semibold tracking-tight">Sentinel</div>
-                        <div className="hidden text-xs text-muted-foreground sm:block">
+                        <h1 className="text-sm font-semibold tracking-tight">Sentinel</h1>
+                        <p className="hidden text-xs text-muted-foreground sm:block">
                             Learns your app, then watches your PRs
-                        </div>
+                        </p>
                     </div>
                 </div>
 

@@ -57,17 +57,14 @@ export function RunCard({ run }: { run: RunSummary }) {
                         controls
                         preload="metadata"
                         src={run.videoUrl}
+                        aria-label={`Recording for ${run.title || `PR #${run.pr}`}`}
                         className="size-full object-contain"
                     />
                 ) : (
                     <Placeholder status={run.status} />
                 )}
                 <div className="pointer-events-none absolute top-2.5 left-2.5">
-                    <StatusBadge
-                        status={run.status}
-                        label={run.outcome ?? undefined}
-                        className="backdrop-blur-md"
-                    />
+                    <StatusBadge status={run.status} className="backdrop-blur-md" />
                 </div>
                 <Button
                     variant="ghost"
