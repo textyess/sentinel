@@ -40,6 +40,7 @@
     "clsx": "^2.1.1",
     "commander": "^12.1.0",
     "dotenv": "^17.2.3",
+    "graphql": "^16.9.0",
     "langfuse": "^3.38.6",
     "lucide-react": "^0.475.0",
     "next": "^15.1.6",
