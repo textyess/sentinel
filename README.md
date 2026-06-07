@@ -1,131 +1,138 @@
-# Sentinel
+<p align="center">
+  <a href="https://github.com/textyess/Sentinel">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="public/brand/png/sentinel-eye-dark-512.png">
+      <img alt="Sentinel" src="public/brand/png/sentinel-eye-512.png" width="104">
+    </picture>
+  </a>
+</p>
 
-An autonomous, persona-driven browser agent that **learns an app** by exploring it, then **tests PRs** by spinning them up, walking the affected flows in a real browser, recording video, and emitting a verdict on whether the PR makes sense.
+<h1 align="center">Sentinel</h1>
 
-Built as a repo-agnostic **core** + per-app **adapters**, so the same engine can target any web app. Read-only by design — safe to point at a live environment.
+<p align="center">
+  An autonomous browser agent that learns your web app, then tests your pull requests<br>
+  in a real, recorded browser and reports a verdict. <strong>Read-only by design — safe to point at production.</strong>
+</p>
 
-## Status
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <img alt="Node >= 22" src="https://img.shields.io/badge/node-%3E%3D22-339933?logo=node.js&logoColor=white">
+  <img alt="Playwright" src="https://img.shields.io/badge/Playwright-1.58-2EAD33?logo=playwright&logoColor=white">
+  <img alt="Network: read-only" src="https://img.shields.io/badge/network-read--only-success">
+</p>
 
-Repo-agnostic core (`src/core/`) + per-app adapter (`src/adapters/`). All runs are read-only: a fail-safe **production preflight** + a **read-only network guard** (mutations fulfilled locally, never sent), with popups/downloads killed.
+<p align="center">
+  <a href="#how-it-works"><strong>How it works</strong></a> ·
+  <a href="#quickstart"><strong>Quickstart</strong></a> ·
+  <a href="#safety"><strong>Safety</strong></a> ·
+  <a href="#the-sentinel-pr-bot"><strong>PR bot</strong></a> ·
+  <a href="DEPLOY.md"><strong>Deploy</strong></a>
+</p>
 
-- **Phase 0 — foundation.** `guard` (preflight), `login`, `smoke`. Playwright driver with video + network/console capture + saved session; multi-step auth bootstrap.
-- **Phase 1 — learn & map.** `crawl` → bounded BFS into an interaction graph (page-state nodes + ranked selectors + nav edges + screenshots), plus LLM-guided actuation (click expanders/tabs to reveal more). `sitemap` → readable Markdown map from the graph.
-- **Phase 2 — PR replay.** `pr <N>` → resolve the PR's preview deployment, map the diff to routes, re-walk the affected flows with video + console/network/control-diff vs the baseline + a redacted manifest.
-- **Phase 3 — verify.** `verify <N>` (`--plan-only`) → the LLM plans a read-only browser test from the PR, a goal-directed executor runs it on the preview (navigate/click/type/assert, resolving the PR's new controls live, vision asserts), records video, and judges `pass / fail / uncertain` with evidence.
+---
 
-LLM via the Vercel AI SDK (Anthropic / OpenAI / **Bedrock**). Human-like pacing (think-pauses + adaptive dwell). Every LLM run prints its token cost and, with `LANGFUSE_*` set, exports one Langfuse trace per run.
+## What it does
 
-## Setup
+Sentinel learns your app by crawling it into an **interaction graph**, then — for any PR — resolves the PR's preview deployment, walks the flows the diff actually touches in a recorded browser, and emits a structured **`pass` / `fail` / `uncertain`** verdict with evidence.
 
-```bash
-cp .env.example .env
-# edit .env: set SENTINEL_EMAIL / SENTINEL_PASSWORD and SENTINEL_BASE_URL
-pnpm install
-# one-time, if Playwright's Chromium isn't installed yet:
-pnpm exec playwright install chromium
+It's a **repo-agnostic core** (`src/core/`) plus **per-app adapters** (`src/adapters/`), so one engine targets any web app — a new app is a new adapter (or a no-code dashboard registration), never a core change. And every run is read-only: two independent safety guards plus a network-level write blocker mean even a misclick on a "Delete account" button never reaches your server.
+
+> [!IMPORTANT]
+> Sentinel never issues writes. Mutating requests (`POST`/`PUT`/`PATCH`/`DELETE`) are blocked unless they match the adapter's auth-only allow-list — and on the deployed bot, read-only is forced unconditionally.
+
+## How it works
+
+Tag `@sentinel` on a PR (or run the CLI), and the pipeline is the same:
+
+```mermaid
+flowchart LR
+  A["@sentinel on a PR"] --> B[Resolve preview deploy]
+  B --> C[Map diff → routes]
+  C --> D[Plan a read-only test]
+  D --> E{Read-only guard}
+  E -->|mutating request| X[Blocked · 423]
+  E -->|safe read| F[Walk flows · record]
+  F --> G[Judge: claim vs observed]
+  G --> H["pass / fail / uncertain"]
 ```
 
-`SENTINEL_BASE_URL` can be a local app (`http://localhost:3000`) or a deployed environment. Supply a real test account for `SENTINEL_EMAIL` / `SENTINEL_PASSWORD`, and an LLM provider + key (Anthropic / OpenAI / AWS Bedrock).
+An LLM **plans** a read-only browser test from the PR, a goal-directed executor **runs** it on the preview (navigate / click / type / assert, resolving the PR's new controls live, with vision asserts on screenshots), records video, and an LLM **judges** whether the PR does what it claims — preferring `uncertain` over a fabricated green.
+
+| Phase | What it delivers | Commands |
+| --- | --- | --- |
+| **0 · Foundation** | Safety guards, Playwright driver (video + network/console capture + saved session), auth bootstrap. | `guard` · `login` · `smoke` |
+| **1 · Learn** | `crawl` builds the interaction graph (bounded BFS + LLM-guided actuation); `sitemap` renders it as Markdown. | `crawl` · `sitemap` |
+| **2 · Replay** | `pr <N>` maps the diff to routes and re-walks the affected flows with video + diffs vs baseline. | `pr <N>` |
+| **3 · Verify** | `verify <N>` plans, runs, records, and judges a read-only test on the preview. | `verify <N>` |
+
+## Quickstart
+
+> Requires Node `>= 22`, [pnpm](https://pnpm.io), and an LLM key (simplest: Anthropic). Runs via `tsx` — no build step for the CLI.
+
+```bash
+cp .env.example .env                      # set SENTINEL_EMAIL / SENTINEL_PASSWORD / SENTINEL_BASE_URL + an LLM key
+pnpm install
+pnpm exec playwright install chromium     # one-time, if Chromium isn't installed
+
+pnpm guard       # safety preflight — no browser needed
+pnpm login       # log in once, save the session
+pnpm crawl       # learn the app into an interaction graph
+pnpm verify 123  # verify PR #123 against its preview
+```
+
+Artifacts — video, screenshots, the interaction graph, and redacted run manifests — land in `.sentinel/` (gitignored).
 
 ## Commands
 
-```bash
-# Safety preflight only — no browser, no app needed. Reports if a prod target is in play.
-pnpm guard
+| Command | What it does |
+| --- | --- |
+| `pnpm guard` | Run the production preflight; print whether the run is clamped to read-only, and why. |
+| `pnpm login` / `pnpm smoke` | Save an authenticated session / boot → log in → screenshot → report blocked writes. |
+| `pnpm crawl` / `pnpm sitemap` | Build the interaction graph / render it as a Markdown sitemap. |
+| `pnpm pr <N>` | Replay PR #N's affected flows against its preview, with video. |
+| `pnpm verify <N>` | Plan → execute → judge a read-only test: `pass` / `fail` / `uncertain`. Add `--plan-only` to just print the plan. |
+| `pnpm dev` | The Next.js dashboard (UI + API) on `127.0.0.1:4317`. |
+| `pnpm typecheck` | `tsc --noEmit` — the build / CI gate. |
 
-# Log in once and save the authenticated session.
-pnpm login
+`crawl`, `pr`, and `verify` take flags (`--max-pages`, `--base-url`, `--max-flows`, …); run any with `--help`.
 
-# Phase 0 smoke: boot -> log in -> screenshot -> report blocked writes.
-pnpm smoke
+## Safety
 
-# Phase 1: crawl the app into an interaction graph, then synthesize a site map.
-pnpm crawl
-pnpm sitemap
+This is why Sentinel can run against a live environment. A **decision** clamps the run to read-only, and **enforcement** makes that physically real.
 
-# Phase 2: replay a PR's affected flows against its preview (needs the GitHub CLI).
-pnpm pr <N>
+**Two signals decide, either one is enough.** A **production preflight** scans the datastores / API origins a run can touch against the adapter's `productionMarkers`; a **remote-host fail-safe** treats any non-local host (anything but `localhost`/`127.0.0.1`/`*.local`/…) as potentially production. When either fires, read-only is forced regardless of config — so an *undetected* prod host still can't become a write path.
 
-# Phase 3: plan a browser test for a PR, run it on the preview, record + judge.
-pnpm verify <N>          # add --plan-only to just generate the to-do plan
+**The network guard enforces it.** Every request is intercepted ([`read-only-guard.ts`](src/core/safety/read-only-guard.ts)) and service workers are blocked so nothing escapes. Blocked mutations are **fulfilled locally with HTTP `423`** (never network-aborted, which would trip dev-server error overlays); the auth allow-list matches the URL **path only** so query-string tricks can't smuggle a write; GraphQL reads-over-POST pass but mutations don't; and secrets are redacted before anything is logged or posted.
 
-# Dashboard: a local UI to register repos, watch live runs, and browse the video
-# gallery. Tag Sentinel (e.g. "@sentinel") on a PR and it records a run + posts a
-# verdict back. One server (UI + API) on http://127.0.0.1:4317.
-pnpm dev                 # Next.js dev server with hot-reload (also: pnpm ui)
-pnpm build && pnpm start # production build, then serve
+## The `@sentinel` PR bot
 
-# Typecheck.
-pnpm typecheck
-```
-
-Artifacts (videos, screenshots, the interaction graph, run manifests) land in `.sentinel/` (gitignored).
-
-## Dashboard
-
-The dashboard is a single **Next.js** app (`app/`) — one server handles both the UI and the
-API, so `pnpm dev` (or `pnpm build && pnpm start`) is all it takes. The UI is React + Tailwind +
-shadcn/ui; the API is a set of route handlers that wrap the same read-only engine the CLI uses,
-with live runs streamed over SSE and the mention poller started from `instrumentation.ts`.
-
-- **Register a project** — a GitHub repo (`owner/name`) with a generic adapter you configure in the form (login recipe, preview-env hint, and the *names* of the env vars holding its test credentials — secrets are never stored, only referenced). First-party apps with fixed, in-code knowledge can ship a built-in adapter instead (see `src/adapters/example.ts`).
-- **Tag to trigger** — the server polls registered repos for PR comments that `@`-mention Sentinel. On a mention it resolves the PR's preview deployment, walks the affected flows in a recorded browser, judges `pass / fail / uncertain`, and posts the verdict back as a comment (with a hidden marker so it never replies to itself).
-- **Watch + gallery** — live progress streams over SSE while a run is in flight; finished runs land in a video gallery, each linked to its PR and verdict.
-
-Every dashboard run is forced read-only and goes through the same production preflight + network guard as the CLI. It targets repos that publish PR **preview deployments** and already have a baseline interaction graph (`pnpm crawl`); a project missing either is flagged in the UI, and Sentinel replies that it needs a baseline crawl rather than failing silently.
-
-## Deploy (self-hosted bot for a team)
-
-To run Sentinel as an always-on bot the whole team can trigger, deploy it once
-(Railway or any Docker host), point it at a GitHub bot account, and anyone can tag
-`@sentinel` on a PR to get a recorded run + verdict. It only reaches *outbound*
-(GitHub + the app under test), so it needs **no public URL** — just keep it running.
-See **[DEPLOY.md](DEPLOY.md)** for the full walkthrough; the short version:
+A self-hosted team bot that's **outbound-only** — it polls GitHub via the `gh` CLI and opens the app under test, so there's **no inbound webhook, no public URL, no TLS** to set up. On an `@sentinel` mention it runs the verify pipeline, judges a verdict, and posts back a single link to the run's **report page** (verdict, plan, step-by-step results, and recording all live on the dashboard). Preconditions like a missing baseline crawl are surfaced, not crashed.
 
 ```bash
-cp .env.example .env             # set GH_TOKEN + an LLM key + test creds
-docker compose up -d --build     # → dashboard on http://127.0.0.1:4317
+pnpm dev   # dashboard on http://127.0.0.1:4317
 ```
 
-Then open the dashboard (privately), register your repo, run one baseline crawl, and
-the bot is live. Verdicts and the recorded video are posted straight into the PR, so
-teammates never need to open the dashboard.
+> [!WARNING]
+> The dashboard has no authentication and can trigger runs and read/write env vars. Keep it on localhost or behind a VPN — never expose it publicly.
 
-## Safety model
+## Deploy & extend
 
-Two independent signals decide whether to clamp to read-only, and **either one** is enough:
-
-1. **Production preflight** scans the datastores/endpoints a run can touch — connection strings and API origins the adapter knows about — against the adapter's `productionMarkers`.
-2. **Remote-host fail-safe** — any target host that isn't local (`localhost`/`127.0.0.1`/`*.local`) is treated as potentially production, so an *undetected* prod host can never become a silent write path.
-
-When either fires, Sentinel **forces read-only** regardless of `SENTINEL_READ_ONLY`. The only way to enable writes against a prod/remote target is `SENTINEL_ALLOW_PROD_WRITES=true`. An adapter can also opt into hard-stop (`failClosedOnProduction: true`) instead of clamping.
-
-The **read-only network guard** then fulfils mutating requests locally (matching the auth allowlist against the URL *path* only, so query-string tricks can't smuggle a write), and **service workers are blocked** so no request escapes interception. Even a misclick on a destructive control can't reach the server.
+- **[DEPLOY.md](DEPLOY.md)** — run Sentinel as an always-on bot on Railway or Docker (`docker compose up -d --build`). It only needs outbound access, so no public URL is required.
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — local setup, the Biome style, and how to add a new app (generic adapter from the dashboard — no code — or a built-in adapter for first-party apps). The non-negotiables: keep `core/` repo-agnostic, never weaken the safety boundary, and redact before logging.
 
 ## Layout
 
 ```
 src/
-  core/         # repo-agnostic engine
-    safety/     # production preflight, read-only network guard, redaction
-    browser/    # Playwright driver (video, network/console capture, guard)
-    auth/       # login recipe + storageState
-    graph/      # interaction-graph model + extraction
-    crawler/    # the learning crawl + LLM-guided actuation
-    pr/         # GitHub plumbing + PR replay
-    verify/     # plan -> execute -> judge
-    reasoner/   # LLM layer (Vercel AI SDK)
-    human/      # human-like pacing
-    config.ts   # env + paths
-    types.ts    # RepoAdapter contract
-  adapters/     # per-app config (login, routes, preview, safety)
-  server/       # dashboard services: API logic, poller, runner, SSE hub, store
-  cli.ts        # the `sentinel` CLI
-app/            # Next.js dashboard: UI (page + components) + API route handlers
-components/     # shadcn/ui + feature components
-instrumentation.ts  # starts the mention poller on server boot
+  core/       # repo-agnostic engine: safety · browser · auth · graph · crawler · pr · verify · reasoner · human
+  adapters/   # per-app config — generic + built-in; the open-source core ships zero built-ins
+  server/     # dashboard services: API, mention poller, runner, SSE hub
+  cli.ts      # the `sentinel` CLI
+app/          # Next.js dashboard — UI and API in one server
 ```
+
+Built with TypeScript (ESM, via `tsx`), Playwright, the [Vercel AI SDK](https://sdk.vercel.ai/) (Anthropic / OpenAI / AWS Bedrock), Next.js + shadcn/ui, and optional [Langfuse](https://langfuse.com/) tracing.
 
 ## License
 
-[MIT](LICENSE).
+[MIT](LICENSE) © 2026 TextYess.
