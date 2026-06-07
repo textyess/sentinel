@@ -49,6 +49,10 @@ export interface StepResult {
     networkErrors: { url: string; status: number }[];
     /** Skill-vs-live divergences noticed on this step; omitted when there were none. */
     discrepancies?: SkillDiscrepancy[];
+    /** Ms from the recording's start to when this step began — places the step's marker on the video timeline. */
+    startMs: number;
+    /** Ms from the recording's start to when this step's screenshot was taken (the observed end state). */
+    endMs: number;
 }
 
 export interface Verdict {

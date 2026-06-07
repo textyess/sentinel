@@ -301,6 +301,9 @@ function toStepResultView(runId: string, r: StepResult): StepResultView {
         consoleErrors: r.consoleErrors,
         networkErrors: r.networkErrors,
         ...(r.discrepancies ? { discrepancies: r.discrepancies } : {}),
+        // Older manifests predate timeline tracking — surface null so the player falls back gracefully.
+        startMs: r.startMs ?? null,
+        endMs: r.endMs ?? null,
     };
 }
 

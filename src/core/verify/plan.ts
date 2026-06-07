@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { InteractionGraph } from "../graph/types";
 import type { Reasoner } from "../reasoner/types";
+import { routesOpenedBy } from "./navigate";
 import type { TestPlan } from "./types";
 
 const PLAN_SCHEMA = z.object({
@@ -31,6 +32,9 @@ const PLAN_SYSTEM =
     "the app's own menu/sidebar/nav link to that route — never by editing the URL bar — so use 'navigate' (target " +
     '= the destination path ONLY, e.g. "/settings", with no descriptive words) for page changes and do NOT add ' +
     "separate steps just to open the menu. " +
+    "Some sidebar/menu controls only open a submenu and have no page of their own — the map marks these " +
+    '"(opens … ; use navigate)"; they are NOT click targets, so to reach a page inside such a group emit a single ' +
+    "'navigate' to that destination path and never 'click' the group label. " +
     'Prefer 6-12 focused steps. Each step: action, target (human description; a bare path like "/settings" for ' +
     "navigate), value (for type/select, else null), expect (what should be visibly true), reason (tie to the PR). " +
     "When a navigation guide is provided, use it to choose real routes and control names and to steer clear of the " +
@@ -52,7 +56,16 @@ function affectedDigest(graph: InteractionGraph, routes: string[]): string {
             const controls = node.controls
                 .filter((c) => c.name)
                 .slice(0, 24)
-                .map((c) => `${c.role}:"${c.name}"`)
+                .map((c) => {
+                    // A control with no href that the map saw open a route is a disclosure
+                    // (a sidebar group toggle / menu opener): clicking it only expands a
+                    // submenu, so surface where it leads and steer the plan to navigate there
+                    // rather than click a label that goes nowhere on its own.
+                    const opens = c.href ? [] : routesOpenedBy(graph, c.role, c.name);
+                    return opens.length > 0
+                        ? `${c.role}:"${c.name}" (opens ${opens.join(", ")}; use navigate)`
+                        : `${c.role}:"${c.name}"`;
+                })
                 .join(", ");
             return `### ${node.url}\n  controls: ${controls}`;
         })

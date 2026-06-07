@@ -12,7 +12,7 @@ import { logger } from "../logger";
 import type { Reasoner } from "../reasoner/types";
 import type { PageSkill, PageSkillIndex } from "../skills/load";
 import { destinationDrift, isSuccessfulClick, missingControl, selectorStale } from "./discrepancy";
-import { navigateLikeUser, toTargetPath } from "./navigate";
+import { navigateLikeUser, routesOpenedBy, toTargetPath } from "./navigate";
 import { discrepancyVerdictNote } from "./proposals";
 import type { PlanStep, SkillDiscrepancy, StepResult, TestPlan, Verdict } from "./types";
 
@@ -143,6 +143,10 @@ async function executeStep(
     let observation = "";
     const discrepancies: SkillDiscrepancy[] = [];
 
+    // Stamp the step's position on the recording timeline before any work (including the
+    // think-pause), so the report's marker sits where the step visibly begins.
+    const startMs = Date.now() - session.videoStartedAt;
+
     await thinkPause(page, options.pacing);
     try {
         if (step.action === "navigate") {
@@ -221,6 +225,25 @@ async function executeStep(
                             discrepancies.push(clickDrift);
                         }
                     }
+                } else if (!control.href) {
+                    // The click missed and the control has no href of its own — likely a
+                    // sidebar group toggle that only opens a submenu. If the map shows it
+                    // opens onto a route, finish like a user: navigate there (which expands
+                    // the menu and follows the revealed link).
+                    const dest = routesOpenedBy(options.graph, control.role, control.name)[0];
+                    if (dest) {
+                        const outcome = await navigateLikeUser(page, dest, options.graph, {
+                            destructive: options.destructive,
+                            baseUrl: session.baseUrl,
+                            loginPath: options.loginPath,
+                            settleMs: options.settleMs,
+                            navTimeoutMs: options.navTimeoutMs,
+                            clickTimeoutMs: options.clickTimeoutMs,
+                        });
+                        await dismissOverlays(page);
+                        status = outcome.ok ? "ok" : "failed";
+                        observation = `"${control.name}" only opens a submenu — ${outcome.observation}`;
+                    }
                 }
             } else {
                 const selectors = candidateSelectors(control, pageSkill);
@@ -287,6 +310,8 @@ async function executeStep(
     } catch {
         // A screenshot failure must not abort the run.
     }
+    // The screenshot is the observed end state, so the timeline window for this step closes here.
+    const endMs = Date.now() - session.videoStartedAt;
 
     const networkErrors = session.network
         .slice(networkBefore)
@@ -306,6 +331,8 @@ async function executeStep(
         screenshot,
         consoleErrors,
         networkErrors,
+        startMs,
+        endMs,
         ...(discrepancies.length > 0 ? { discrepancies } : {}),
     };
 }

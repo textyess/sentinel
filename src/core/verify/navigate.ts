@@ -155,6 +155,33 @@ function nextControlToward(graph: InteractionGraph, currentNorm: string, targetN
 }
 
 /**
+ * The routes a control opens onto, per the map: the destinations of edges the
+ * crawl recorded `via` this control while actuating (kind "action"). A disclosure
+ * — a sidebar group toggle, a menu opener — has no href of its own; clicking it
+ * only reveals links, so the way to reach what it offers is to navigate to one of
+ * these routes, not to click the control. Sorted shortest-first, so a group's
+ * base/index route leads. Empty for an ordinary link or a control the crawl never
+ * saw open anything. Matched by control identity (role|name), which is stable
+ * across the pages that share the same persistent chrome (the sidebar).
+ */
+export function routesOpenedBy(graph: InteractionGraph, role: string, name: string): string[] {
+    if (!name) {
+        return [];
+    }
+    const routes = new Set<string>();
+    for (const edge of graph.edges) {
+        if (edge.via.kind !== "action" || edge.via.role !== role || edge.via.name !== name) {
+            continue;
+        }
+        const to = graph.nodes[edge.to];
+        if (to) {
+            routes.add(to.url);
+        }
+    }
+    return [...routes].sort((a, b) => a.length - b.length || a.localeCompare(b));
+}
+
+/**
  * Reach a target path the way a person would: by clicking the app's own
  * navigation rather than rewriting the URL. Each turn it first clicks a visible
  * link to the target, otherwise it clicks the control the interaction graph says

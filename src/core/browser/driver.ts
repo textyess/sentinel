@@ -22,6 +22,12 @@ export interface DriverSession {
     context: BrowserContext;
     page: Page;
     baseUrl: string;
+    /**
+     * Epoch ms captured the instant the recording page was created — the video's t=0.
+     * Steps stamp their offset against this so the report can place clickable markers
+     * on the recording timeline.
+     */
+    videoStartedAt: number;
     /** Mutating/telemetry requests the read-only guard prevented (populated during the run). */
     blocked: BlockedRequest[];
     /** Document/XHR/fetch responses observed during the run. */
@@ -97,6 +103,8 @@ export async function createSession(options: DriverOptions): Promise<DriverSessi
         }
 
         const page = await context.newPage();
+        // Recording begins with the first page, so this is the video's t=0 reference.
+        const videoStartedAt = Date.now();
 
         // A click during actuation might open a popup or trigger a download. Neither is
         // ever wanted: close popups (so no unguarded third-party flow runs) and cancel
@@ -139,6 +147,7 @@ export async function createSession(options: DriverOptions): Promise<DriverSessi
             context,
             page,
             baseUrl: options.baseUrl,
+            videoStartedAt,
             blocked,
             network,
             consoleErrors,

@@ -126,6 +126,10 @@ export interface StepResultView {
     networkErrors: StepResult["networkErrors"];
     /** Skill-vs-live divergences noticed on this step; omitted when there were none. */
     discrepancies?: SkillDiscrepancy[];
+    /** Ms from the recording's start to when this step began. Null for runs recorded before timing was tracked. */
+    startMs: number | null;
+    /** Ms from the recording's start to this step's screenshot (its observed end state). Null for older runs. */
+    endMs: number | null;
 }
 
 /**

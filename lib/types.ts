@@ -211,6 +211,10 @@ export interface StepResultView {
     networkErrors: NetworkError[];
     /** Skill-vs-live divergences noticed on this step; omitted when there were none. */
     discrepancies?: SkillDiscrepancy[];
+    /** Ms from the recording's start to when this step began — positions its marker on the video timeline. */
+    startMs: number | null;
+    /** Ms from the recording's start to this step's screenshot (its observed end state). */
+    endMs: number | null;
 }
 
 export interface RunManifestView {
