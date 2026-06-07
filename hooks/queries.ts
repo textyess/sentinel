@@ -79,6 +79,10 @@ export function useCrawlProject() {
     return useMutation({ mutationFn: (id: string) => api.crawlProject(id) });
 }
 
+export function useGenerateSkills() {
+    return useMutation({ mutationFn: (id: string) => api.generateSkills(id) });
+}
+
 export function useVerifyProject() {
     return useMutation({
         mutationFn: ({ id, pr }: { id: string; pr: number }) => api.verifyProject(id, pr),

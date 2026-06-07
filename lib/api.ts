@@ -57,6 +57,8 @@ export const api = {
             method: "POST",
             body: JSON.stringify({}),
         }),
+    generateSkills: (id: string) =>
+        request<TriggerResult>(`/api/projects/${encodeURIComponent(id)}/skills`, { method: "POST" }),
     verifyProject: (id: string, pr: number) =>
         request<TriggerResult>(`/api/projects/${encodeURIComponent(id)}/verify/${pr}`, {
             method: "POST",
@@ -79,4 +81,9 @@ export const api = {
 /** SSE endpoint for a run's live progress. */
 export function eventsUrl(runId: string): string {
     return `/api/events?runId=${encodeURIComponent(runId)}`;
+}
+
+/** Download URL for a project's portable skill pack (a `.tar.gz`). */
+export function skillsExportUrl(projectId: string): string {
+    return `/api/projects/${encodeURIComponent(projectId)}/skills/export`;
 }

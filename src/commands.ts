@@ -22,6 +22,10 @@ import type { Reasoner } from "./core/reasoner/types";
 import { runProductionPreflight } from "./core/safety/production-guard";
 import { redactSecret } from "./core/safety/redact";
 import { synthesizeSiteMap } from "./core/sitemap/synthesize";
+import { exportSkillPack } from "./core/skills/export";
+import { generateSkillPack } from "./core/skills/generate";
+import { importSkillPack } from "./core/skills/import";
+import { type DriftSignal, reconcileSkillPack } from "./core/skills/reconcile";
 import type { BlockedRequest, Credentials, RepoAdapter, SafetyConfig } from "./core/types";
 import { planForProject, runVerifyForProject } from "./core/verify/run";
 
@@ -240,6 +244,146 @@ export async function runSiteMap(): Promise<void> {
     fs.writeFileSync(outFile, markdown);
     logger.success(`Site map written -> ${outFile}`);
     await reportRunCost();
+}
+
+/**
+ * Phase 1: project the latest interaction graph into a navigation skill pack — one
+ * general "how this app works" skill plus one per route area, each a loadable
+ * SKILL.md. Reads the saved graph (no browsing). Every skill body is LLM-authored
+ * from the observed data and verified against the graph, so the LLM is required.
+ */
+export async function runSkills(): Promise<void> {
+    logger.banner("Phase 1 skills — author a navigation skill pack from the graph");
+    const env = loadEnvConfig();
+    const adapter = getAdapter();
+
+    const graphFile = path.join(env.outputDir, adapter.id, "graph", "latest.json");
+    if (!fs.existsSync(graphFile)) {
+        throw new Error(`No interaction graph at ${graphFile}. Run \`sentinel crawl\` first.`);
+    }
+    const graph = loadGraph(graphFile);
+    logger.info(`Loaded graph: ${graph.coverage.nodeCount} pages, ${graph.coverage.edgeCount} edges.`);
+
+    const credentialIssue = llmCredentialIssue(env.llmProvider);
+    if (credentialIssue) {
+        throw new Error(
+            `${credentialIssue} (provider=${env.llmProvider}). Skill authoring needs the LLM — set it in ` +
+                "apps/qa-agent/.env, or change SENTINEL_LLM_PROVIDER / SENTINEL_LLM_MODEL.",
+        );
+    }
+    const reasoner = createReasoner(env);
+    startRun("skills", { kind: "skills", model: reasoner.modelLabel });
+    logger.info(`Authoring skills with ${reasoner.modelLabel} ...`);
+
+    const pack = await generateSkillPack({ graph, outputDir: env.outputDir, adapterId: adapter.id, reasoner });
+    logger.success(`Skill pack written -> ${pack.dir} (${pack.skillCount} skill(s)).`);
+    for (const area of pack.manifest.areas) {
+        logger.info(`  ${area.slug}: ${area.routes.length} route(s)`);
+    }
+    await reportRunCost();
+}
+
+/**
+ * Phase E: reconcile/promote the skill pack — the ONLY path besides `sentinel skills`
+ * that rewrites skills/, and it does so by re-deriving from a fresh, read-only BASELINE
+ * crawl, never from a preview. An optional verify-run `skill-proposals.json` is used only
+ * as a drift report and a safety gate (reconcile refuses if its source URL is the crawl
+ * target); its contents are never copied into a skill. You running this is the human gate.
+ */
+export async function runSkillsPromote(
+    proposalsPath: string | null,
+    maxPages: number,
+    actuationsPerPage: number,
+): Promise<void> {
+    logger.banner("Phase E skills — reconcile/promote from a fresh baseline crawl");
+    const env = loadEnvConfig();
+    const adapter = getAdapter();
+    requireCredentials(adapter);
+
+    const credentialIssue = llmCredentialIssue(env.llmProvider);
+    if (credentialIssue) {
+        throw new Error(
+            `${credentialIssue} (provider=${env.llmProvider}). Reconcile re-authors skills and needs the LLM — ` +
+                "set it in apps/qa-agent/.env, or change SENTINEL_LLM_PROVIDER / SENTINEL_LLM_MODEL.",
+        );
+    }
+
+    let drift: DriftSignal | null = null;
+    if (proposalsPath) {
+        if (!fs.existsSync(proposalsPath)) {
+            throw new Error(`No proposals file at ${proposalsPath}.`);
+        }
+        const parsed = JSON.parse(fs.readFileSync(proposalsPath, "utf8")) as Partial<DriftSignal>;
+        // Validate the shape before it feeds the safety gate — a malformed file must fail
+        // with a clear error, never crash opaquely or hand previewSourceRefusal a bad URL.
+        if (typeof parsed.targetUrl !== "string" || !Array.isArray(parsed.proposals)) {
+            throw new Error(
+                `${proposalsPath} is not a valid skill-proposals.json (need a "targetUrl" string and a "proposals" array).`,
+            );
+        }
+        drift = { targetUrl: parsed.targetUrl, proposals: parsed.proposals };
+        logger.warn(
+            `Drift signal: ${drift.proposals.length} proposal(s) recorded against ${drift.targetUrl} ` +
+                "(used as a gate + report only — never copied into skills/).",
+        );
+    }
+
+    logger.info(`Re-crawling the BASELINE read-only: ${adapter.baseUrl} ...`);
+    const reasoner = createReasoner(env);
+    startRun("skills-promote", { kind: "skills", model: reasoner.modelLabel });
+
+    const result = await reconcileSkillPack({
+        adapter,
+        env,
+        outputDir: env.outputDir,
+        maxPages,
+        actuationsPerPage,
+        reasoner,
+        gitSha: currentGitSha(REPO_ROOT),
+        drift,
+    });
+    logger.success(
+        `Reconciled skill pack -> ${result.pack.dir} (${result.pack.skillCount} skill(s)) from a fresh baseline crawl.`,
+    );
+    if (result.driftedRoutes.length > 0) {
+        logger.info(`Drift had been reported on: ${result.driftedRoutes.join(", ")}`);
+    }
+    await reportRunCost();
+}
+
+/**
+ * Phase 1: export a portable copy of the skill pack for another agent — the internal
+ * selector appendix is stripped and the safety note rewritten for a runtime without
+ * Sentinel's guards. The per-skill folders drop straight into a `.claude/skills/` dir.
+ */
+export async function runSkillsExport(outDir: string | null): Promise<void> {
+    logger.banner("Phase 1 skills — export a portable skill pack");
+    const env = loadEnvConfig();
+    const adapter = getAdapter();
+    const dest = outDir ?? path.join(env.outputDir, adapter.id, "skills-export");
+    const result = exportSkillPack({ outputDir: env.outputDir, adapterId: adapter.id, outDir: dest });
+    logger.success(`Exported ${result.skillCount} portable skill(s) -> ${result.dir}`);
+    logger.info("Drop these folders into another agent's `.claude/skills/`, or zip the directory to share.");
+}
+
+/**
+ * Phase 1: import a shared navigation skill pack so Phase 3 verify can load it.
+ * Imports are descriptive only — capability frontmatter is dropped and no bundled
+ * scripts are copied; the safety guards remain the sole authority regardless.
+ */
+export async function runSkillsImport(sourceDir: string, overwrite: boolean): Promise<void> {
+    logger.banner("Phase 1 skills — import a navigation skill pack");
+    const env = loadEnvConfig();
+    const adapter = getAdapter();
+    const result = importSkillPack({ outputDir: env.outputDir, adapterId: adapter.id, sourceDir, overwrite });
+    logger.success(`Imported ${result.installed.length}/${result.total} skill(s) into ${adapter.id}.`);
+    if (result.installed.length > 0) {
+        logger.info(`  installed: ${result.installed.join(", ")}`);
+    }
+    if (result.skipped.length > 0) {
+        logger.warn(`  skipped (already exists — pass --overwrite): ${result.skipped.join(", ")}`);
+    }
+    logger.info("Phase 3 verify will load these for matching routes.");
 }
 
 function reportCoverage(c: CoverageReport): void {

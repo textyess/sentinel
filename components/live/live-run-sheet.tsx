@@ -17,6 +17,13 @@ export interface ActiveRun {
     kind: RunKind;
 }
 
+const KIND_LABEL: Record<RunKind, string> = {
+    verify: "PR verify",
+    crawl: "Baseline crawl",
+    skills: "Skill pack",
+    autodetect: "Auto-detect",
+};
+
 function HeaderStatus({
     streaming,
     error,
@@ -82,11 +89,11 @@ export function LiveRunSheet({
                                 <span
                                     className={cn(
                                         "rounded-md border px-2 py-0.5 text-[11px] font-medium",
-                                        kind === "crawl"
-                                            ? "border-border text-muted-foreground"
-                                            : "border-primary/30 bg-primary/10 text-primary",
+                                        kind === "verify"
+                                            ? "border-primary/30 bg-primary/10 text-primary"
+                                            : "border-border text-muted-foreground",
                                     )}>
-                                    {kind === "crawl" ? "Baseline crawl" : "PR verify"}
+                                    {KIND_LABEL[kind]}
                                 </span>
                                 <HeaderStatus streaming={state.streaming} error={state.error} outcome={headerOutcome} />
                             </div>
@@ -106,6 +113,13 @@ export function LiveRunSheet({
                                 <VerdictCallout verdict={done.verdict} videoUrl={done.videoUrl} />
                             )}
                             {done && "coverage" in done && <CoverageCallout coverage={done.coverage} />}
+                            {done && "skillCount" in done && (
+                                <div className="rounded-xl border border-pass/30 bg-pass/5 p-4 text-sm">
+                                    Authored <span className="font-medium">{done.skillCount}</span> skill(s) across{" "}
+                                    <span className="font-medium">{done.areas}</span> area(s). Export the pack from the
+                                    project’s ··· menu.
+                                </div>
+                            )}
 
                             <div className="min-h-0 flex-1">
                                 <RunLog lines={state.lines} streaming={state.streaming} />

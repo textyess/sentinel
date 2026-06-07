@@ -68,6 +68,8 @@ export { ProductionGuardError, runProductionPreflight } from "./core/safety/prod
 export { installReadOnlyGuard } from "./core/safety/read-only-guard";
 export { redactSecret } from "./core/safety/redact";
 export { synthesizeSiteMap } from "./core/sitemap/synthesize";
+export { buildPortablePack } from "./core/skills/export";
+export { generateSkillPack } from "./core/skills/generate";
 export type {
     AuthStrategy,
     BlockedRequest,

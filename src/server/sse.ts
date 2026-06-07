@@ -51,6 +51,16 @@ function progressChunk(level: string, message: string, at: string): string {
     return `event: progress\ndata: ${JSON.stringify({ level, message: redactSecret(message), at })}\n\n`;
 }
 
+/**
+ * Pre-attach a run's logger sink so its lines buffer from the very first one — even
+ * when the browser's EventSource connects a moment after the run starts. Without this,
+ * a fast-starting run (e.g. skill authoring) emits its first lines before any
+ * subscriber exists and they are dropped, so the live panel looks stuck on "Waiting".
+ */
+export function primeStream(runId: string): void {
+    ensureSink(runId);
+}
+
 /** Attach a logger sink for this run the first time anyone cares about it. */
 function ensureSink(runId: string): void {
     if (unsubscribers.has(runId)) {
@@ -137,6 +147,12 @@ export function publishError(runId: string, message: string): void {
 export function publishAutodetectDone(runId: string, proposal: AutodetectProposal): void {
     const safe: AutodetectProposal = { ...proposal, notes: proposal.notes.map(redactSecret) };
     emit(runId, `event: done\ndata: ${JSON.stringify({ kind: "autodetect", proposal: safe })}\n\n`);
+    releaseSink(runId);
+}
+
+/** Terminal event for a skill-pack generation — counts only, never a verdict or secret. */
+export function publishSkillsDone(runId: string, payload: { skillCount: number; areas: number }): void {
+    emit(runId, `event: done\ndata: ${JSON.stringify({ kind: "skills", ...payload })}\n\n`);
     releaseSink(runId);
 }
 

@@ -36,8 +36,9 @@ const PLAN_SYSTEM =
     '"(opens … ; use navigate)"; they are NOT click targets, so to reach a page inside such a group emit a single ' +
     "'navigate' to that destination path and never 'click' the group label. " +
     'Prefer 6-12 focused steps. Each step: action, target (human description; a bare path like "/settings" for ' +
-    "navigate), value (for " +
-    "type/select, else null), expect (what should be visibly true), reason (tie to the PR).";
+    "navigate), value (for type/select, else null), expect (what should be visibly true), reason (tie to the PR). " +
+    "When a navigation guide is provided, use it to choose real routes and control names and to steer clear of the " +
+    "destructive controls it lists.";
 
 /** A compact map of the affected pages + their controls, so the planner targets things that exist. */
 function affectedDigest(graph: InteractionGraph, routes: string[]): string {
@@ -78,6 +79,8 @@ export interface PlanContext {
     affectedRoutes: string[];
     /** Truncated unified diff of the changed web files (optional signal). */
     diffExcerpt: string;
+    /** Distilled navigation skills for the affected area(s), if a skill pack exists. */
+    skills?: string;
 }
 
 export async function generatePlan(
@@ -96,7 +99,7 @@ ${context.changedFiles.slice(0, 40).join("\n")}
 
 App map of the affected pages (real routes + controls you can target):
 ${affectedDigest(graph, context.affectedRoutes)}
-
+${context.skills ? `\nNavigation guide (distilled skills for the affected area(s)):\n${context.skills}\n` : ""}
 Diff excerpt (what changed):
 ${context.diffExcerpt || "(not available)"}
 

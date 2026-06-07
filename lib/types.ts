@@ -39,13 +39,15 @@ export interface ProjectView {
     createdAt: string;
     graphPresent: boolean;
     credsConfigured: boolean;
+    /** True when a generated skill pack exists (so it can be exported). */
+    skillsPresent: boolean;
     /** False for a public (no-login) project — the UI then shows "no login needed". */
     authRequired: boolean;
 }
 
-// POST /api/projects returns the base record — graphPresent/credsConfigured are
-// derived only by GET /api/projects, so the create response omits them.
-export type ProjectRecord = Omit<ProjectView, "graphPresent" | "credsConfigured">;
+// POST /api/projects returns the base record — graphPresent/credsConfigured/skillsPresent
+// are derived only by GET /api/projects, so the create response omits them.
+export type ProjectRecord = Omit<ProjectView, "graphPresent" | "credsConfigured" | "skillsPresent">;
 
 export interface RunSummary {
     runId: string;
@@ -152,9 +154,10 @@ export interface AutodetectProposal {
 export type DoneEvent =
     | { kind?: undefined; verdict: Verdict; videoUrl: string | null }
     | { kind: "crawl"; coverage: CrawlCoverage; graphPresent: true }
+    | { kind: "skills"; skillCount: number; areas: number }
     | { kind: "autodetect"; proposal: AutodetectProposal };
 
-export type RunKind = "verify" | "crawl" | "autodetect";
+export type RunKind = "verify" | "crawl" | "autodetect" | "skills";
 
 // ---- run report (a verify run's manifest, sanitized for the browser) --------
 
@@ -188,6 +191,15 @@ export interface NetworkError {
     status: number;
 }
 
+export type DiscrepancyKind = "selector-stale" | "missing-control" | "destination-drift";
+
+export interface SkillDiscrepancy {
+    kind: DiscrepancyKind;
+    route: string;
+    skillSlug: string;
+    detail: string;
+}
+
 export interface StepResultView {
     index: number;
     step: PlanStep;
@@ -197,6 +209,8 @@ export interface StepResultView {
     screenshotUrl: string | null;
     consoleErrors: string[];
     networkErrors: NetworkError[];
+    /** Skill-vs-live divergences noticed on this step; omitted when there were none. */
+    discrepancies?: SkillDiscrepancy[];
     /** Ms from the recording's start to when this step began — positions its marker on the video timeline. */
     startMs: number | null;
     /** Ms from the recording's start to this step's screenshot (its observed end state). */

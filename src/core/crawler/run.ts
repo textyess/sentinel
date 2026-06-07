@@ -8,6 +8,7 @@ import type { PacingOptions } from "../human/pacing";
 import { logger } from "../logger";
 import type { Reasoner } from "../reasoner/types";
 import { runProductionPreflight } from "../safety/production-guard";
+import { generateSkillPack } from "../skills/generate";
 import type { BlockedRequest, RepoAdapter } from "../types";
 import { crawl } from "./crawler";
 
@@ -123,6 +124,24 @@ export async function runCrawlForProject(args: RunCrawlArgs): Promise<RunCrawlRe
         if (blockedLines.length > 0) {
             logger.info(`read-only stopped ${session.blocked.length} request(s): ${blockedLines.join("; ")}`);
         }
+
+        // Author the navigation skill pack as part of learning the app — so a baseline build
+        // yields both the graph and the skills in one pass, no separate step. Best-effort:
+        // the graph is the critical artifact, so an authoring failure is logged, not fatal,
+        // and skills can be regenerated from the saved graph later. Needs the LLM (the same
+        // reasoner that drove actuation); a link-only crawl skips it.
+        if (reasoner && graph.coverage.nodeCount > 0) {
+            try {
+                logger.info("Authoring navigation skills from the new baseline ...");
+                const pack = await generateSkillPack({ graph, outputDir, adapterId: adapter.id, reasoner });
+                logger.success(`Authored ${pack.skillCount} navigation skill(s).`);
+            } catch (error) {
+                logger.warn(
+                    `Skill authoring skipped (baseline graph is saved — regenerate skills later): ${error instanceof Error ? error.message : String(error)}`,
+                );
+            }
+        }
+
         return { graphFile, coverage: graph.coverage, blocked: session.blocked };
     } finally {
         await closeQuietly(session.close);

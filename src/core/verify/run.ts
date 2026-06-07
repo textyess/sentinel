@@ -13,10 +13,12 @@ import { getChangedFiles, getPrDiff, getPrMeta, type PrMeta } from "../pr/github
 import type { Reasoner } from "../reasoner/types";
 import { runProductionPreflight } from "../safety/production-guard";
 import { redactSecret } from "../safety/redact";
+import { loadPageSkillIndex, loadSkillsForRoutes } from "../skills/load";
 import type { BlockedRequest, RepoAdapter } from "../types";
 import { executePlan, judgeVerdict } from "./execute";
 import { navigateLikeUser, toTargetPath } from "./navigate";
 import { generatePlan } from "./plan";
+import { buildSkillProposals } from "./proposals";
 import type { StepResult, TestPlan, Verdict, VerifyManifest } from "./types";
 
 /** Filesystem-safe timestamp for run directories. */
@@ -90,6 +92,8 @@ export interface PlanResult {
     graph: InteractionGraph;
     plan: TestPlan;
     runDir: string;
+    /** Navigation skills (slugs) that informed the plan; empty when no skill pack exists. */
+    skillsUsed: string[];
 }
 
 /**
@@ -113,11 +117,27 @@ export async function planForProject(args: PlanArgs): Promise<PlanResult> {
     }
     const graph = loadGraph(graphFile);
 
+    // Pull in the distilled navigation skills for the affected area(s) — an optional
+    // enrichment on top of the raw graph map. Absent until `sentinel skills` has run.
+    const skills = loadSkillsForRoutes(outputDir, adapter.id, routes);
+    if (skills) {
+        logger.info(`Navigation skills: ${skills.slugs.join(", ")}`);
+    } else {
+        logger.info("No skill pack found — planning from the graph only (run `sentinel skills` to add one).");
+    }
+
     logger.info(`Planning with ${reasoner.modelLabel} ...`);
     const diff = await getPrDiff(prNumber, 6000, repoArg);
     const plan = await generatePlan(
         reasoner,
-        { title: meta.title, body: meta.body, changedFiles, affectedRoutes: routes, diffExcerpt: diff },
+        {
+            title: meta.title,
+            body: meta.body,
+            changedFiles,
+            affectedRoutes: routes,
+            diffExcerpt: diff,
+            skills: skills?.text,
+        },
         graph,
     );
     logPlan(plan);
@@ -126,7 +146,7 @@ export async function planForProject(args: PlanArgs): Promise<PlanResult> {
     fs.mkdirSync(runDir, { recursive: true });
     fs.writeFileSync(path.join(runDir, "plan.json"), JSON.stringify(plan, null, 2));
 
-    return { meta, changedFiles, routes, graph, plan, runDir };
+    return { meta, changedFiles, routes, graph, plan, runDir, skillsUsed: skills?.slugs ?? [] };
 }
 
 export interface RunVerifyArgs extends PlanArgs {
@@ -160,7 +180,14 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
         throw new Error(`No login configured for ${adapter.displayName} — set the project's credential env vars.`);
     }
 
-    const { meta, changedFiles, routes, graph, plan, runDir } = await planForProject(args);
+    const { meta, changedFiles, routes, graph, plan, runDir, skillsUsed } = await planForProject(args);
+
+    // Exact baseline selectors for the affected routes, for selector-first execution.
+    // Reads the same pack as the planner; null until `sentinel skills` has run.
+    const pageSkills = loadPageSkillIndex(args.outputDir, adapter.id, graph, routes);
+    if (pageSkills) {
+        logger.info(`Page skills: ${pageSkills.slugs.join(", ")} (${pageSkills.routes.length} route(s))`);
+    }
 
     logger.info(`Target: ${targetUrl}`);
     // The adapter is already scoped to targetUrl, so the preflight checks the real target.
@@ -220,6 +247,7 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
             pacing: pacingFromEnv(env),
             loginPath: adapter.auth.loginPath,
             graph,
+            pageSkills,
         });
         logger.info("Judging ...");
         verdict = await judgeVerdict(reasoner, meta.title, meta.body, plan, results);
@@ -236,6 +264,8 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
         targetUrl,
         changedFiles,
         affectedRoutes: routes,
+        skillsUsed,
+        pageSkillsUsed: pageSkills?.slugs ?? [],
         readOnly: preflight.effectiveReadOnly,
         blockedWrites: session.blocked.filter((b) => b.reason === "mutation").length,
         model: reasoner.modelLabel,
@@ -248,6 +278,25 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
     // The manifest is a shared artifact (a PR comment is built from it) — redact before disk.
     fs.writeFileSync(path.join(runDir, "manifest.json"), redactSecret(JSON.stringify(manifest, null, 2)));
     logVerdict(manifest);
+
+    // Inert skill-drift proposals — written to the run dir only, NEVER to skills/. Promotion
+    // is a separate, baseline-gated step (`skills reconcile`); this is just surfaced signal.
+    const proposals = buildSkillProposals(
+        results.flatMap((r) => r.discrepancies ?? []),
+        {
+            pr: meta.number,
+            headSha: meta.headSha,
+            baselineGitSha: graph.gitSha,
+            targetUrl,
+            createdAt: new Date().toISOString(),
+        },
+    );
+    if (proposals) {
+        fs.writeFileSync(path.join(runDir, "skill-proposals.json"), redactSecret(JSON.stringify(proposals, null, 2)));
+        logger.warn(
+            `Skill drift: ${proposals.proposals.length} proposal(s) → skill-proposals.json (baseline may be out of date; no skills/ changes).`,
+        );
+    }
 
     return { manifest, runDir, blocked: session.blocked };
 }

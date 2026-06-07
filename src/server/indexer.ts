@@ -91,11 +91,11 @@ async function listDirNames(dir: string): Promise<string[]> {
 export async function indexRuns(): Promise<RunSummary[]> {
     const records = await listRunRecords();
     const recordDirs = new Set(records.map((r) => r.runDir).filter((d): d is string => Boolean(d)));
-    // Crawl + autodetect runs have no verdict/video — keep them out of the verdict gallery.
+    // Crawl + autodetect + skills runs have no verdict/video — keep them out of the verdict gallery.
     const summaries: RunSummary[] = records
         .filter((r) => {
             const kind = r.kind ?? "verify";
-            return kind !== "crawl" && kind !== "autodetect";
+            return kind !== "crawl" && kind !== "autodetect" && kind !== "skills";
         })
         .map(recordToSummary);
 
