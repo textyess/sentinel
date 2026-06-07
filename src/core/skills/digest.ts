@@ -1,4 +1,4 @@
-import type { ControlKind, ControlRef, InteractionGraph, PageNode } from "../graph/types";
+import type { ControlKind, ControlRef, InteractionGraph } from "../graph/types";
 import type { AreaSlice } from "./group";
 
 /**
@@ -83,24 +83,6 @@ export function flaggedPages(graph: InteractionGraph): string[] {
     return out;
 }
 
-/** The selector lines for a page's key controls, in the verbatim form the body must reproduce. */
-function selectorDigestLines(node: PageNode): string[] {
-    const out: string[] = [];
-    const seen = new Set<string>();
-    for (const control of node.controls) {
-        if (control.kind !== "navigation" && control.kind !== "action") {
-            continue;
-        }
-        const name = control.name.trim();
-        if (!name || control.selectors.length === 0 || seen.has(name)) {
-            continue;
-        }
-        seen.add(name);
-        out.push(`    - ${name}: ${control.selectors.map((s) => `\`${s}\``).join(" → ")}`);
-    }
-    return out;
-}
-
 /** Serialize one route area's observed pages into the DATA block for the area authoring prompt. */
 export function areaDigest(slice: AreaSlice, graph: InteractionGraph): string {
     const outgoing = outgoingByNode(graph);
@@ -131,11 +113,6 @@ export function areaDigest(slice: AreaSlice, graph: InteractionGraph): string {
         );
         if (destructive.length > 0) {
             lines.push(`  destructive: ${destructive.map((n) => `"${n}"`).join(", ")}`);
-        }
-        const selectors = selectorDigestLines(node);
-        if (selectors.length > 0) {
-            lines.push("  selectors:");
-            lines.push(...selectors);
         }
         blocks.push(lines.join("\n"));
     }

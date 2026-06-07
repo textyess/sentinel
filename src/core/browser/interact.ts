@@ -22,8 +22,16 @@ export async function moveCursorToLocator(page: Page, locator: Locator, timeoutM
     }
 }
 
-/** Click the first ranked selector that resolves to exactly one element (no ambiguous clicks). */
-export async function clickBySelectors(page: Page, selectors: string[], timeoutMs: number): Promise<boolean> {
+/**
+ * Click the first ranked selector that resolves to exactly one element (no ambiguous
+ * clicks). Returns the selector that worked, or null if none did — a caller can compare
+ * it against the skill-recorded selectors to tell when self-heal fell through to a live one.
+ */
+export async function clickBySelectorsTracked(
+    page: Page,
+    selectors: string[],
+    timeoutMs: number,
+): Promise<string | null> {
     for (const selector of selectors) {
         try {
             const locator = page.locator(selector);
@@ -32,12 +40,40 @@ export async function clickBySelectors(page: Page, selectors: string[], timeoutM
             }
             await moveCursorToLocator(page, locator, timeoutMs);
             await locator.click({ timeout: timeoutMs });
-            return true;
+            return selector;
         } catch {
             // Self-heal: try the next, more specific ranked selector.
         }
     }
-    return false;
+    return null;
+}
+
+/** Click the first ranked selector that resolves to exactly one element (no ambiguous clicks). */
+export async function clickBySelectors(page: Page, selectors: string[], timeoutMs: number): Promise<boolean> {
+    return (await clickBySelectorsTracked(page, selectors, timeoutMs)) !== null;
+}
+
+/** Fill the first ranked selector that resolves to exactly one element. Returns the selector that worked, or null. */
+export async function fillBySelectorsTracked(
+    page: Page,
+    selectors: string[],
+    value: string,
+    timeoutMs: number,
+): Promise<string | null> {
+    for (const selector of selectors) {
+        try {
+            const locator = page.locator(selector);
+            if ((await locator.count()) !== 1) {
+                continue;
+            }
+            await moveCursorToLocator(page, locator, timeoutMs);
+            await locator.fill(value, { timeout: timeoutMs });
+            return selector;
+        } catch {
+            // try the next selector
+        }
+    }
+    return null;
 }
 
 /** Fill the first ranked selector that resolves to exactly one element. */
@@ -47,18 +83,5 @@ export async function fillBySelectors(
     value: string,
     timeoutMs: number,
 ): Promise<boolean> {
-    for (const selector of selectors) {
-        try {
-            const locator = page.locator(selector);
-            if ((await locator.count()) !== 1) {
-                continue;
-            }
-            await moveCursorToLocator(page, locator, timeoutMs);
-            await locator.fill(value, { timeout: timeoutMs });
-            return true;
-        } catch {
-            // try the next selector
-        }
-    }
-    return false;
+    return (await fillBySelectorsTracked(page, selectors, value, timeoutMs)) !== null;
 }

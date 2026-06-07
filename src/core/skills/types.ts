@@ -72,19 +72,3 @@ export interface ImportedSkillEntry {
 export interface ImportedIndex {
     skills: ImportedSkillEntry[];
 }
-
-/**
- * An LLM-authored skill: the free-prose Markdown body plus a declaration of the
- * concrete routes/controls/selectors/destructive-controls it referenced. The
- * references make verification exact set-membership against the graph rather than
- * brittle parsing of the prose.
- */
-export interface AuthoredSkill {
-    body: string;
-    references: {
-        routes: string[];
-        controls: string[];
-        selectors: string[];
-        destructive: string[];
-    };
-}

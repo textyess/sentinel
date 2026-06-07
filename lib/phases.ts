@@ -34,12 +34,21 @@ export const AUTODETECT_PHASES: Phase[] = [
     { key: "propose", label: "Proposal", match: NEVER },
 ];
 
+export const SKILLS_PHASES: Phase[] = [
+    { key: "start", label: "Start", match: NEVER },
+    { key: "author", label: "Author", match: /Authoring/i },
+    { key: "pack", label: "Pack", match: NEVER },
+];
+
 export function phasesFor(kind: RunKind): Phase[] {
     if (kind === "crawl") {
         return CRAWL_PHASES;
     }
     if (kind === "autodetect") {
         return AUTODETECT_PHASES;
+    }
+    if (kind === "skills") {
+        return SKILLS_PHASES;
     }
     return VERIFY_PHASES;
 }

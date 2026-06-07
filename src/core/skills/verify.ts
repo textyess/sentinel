@@ -1,7 +1,5 @@
 import type { InteractionGraph } from "../graph/types";
-import { persistentNav } from "./digest";
 import type { AreaSlice } from "./group";
-import type { AuthoredSkill } from "./types";
 
 /**
  * Pure, code-based verification of an LLM-authored skill against the interaction
@@ -15,62 +13,36 @@ export const SAFETY_HEADING = "## Safety";
 export const SELECTORS_HEADING = "## Selectors (internal — stripped on export)";
 export const DESTRUCTIVE_HEADING = "## Destructive controls (recorded — do NOT actuate)";
 export const FLOWS_HEADING = "## Flows";
-export const REQUIRED_AREA_HEADINGS = ["## Purpose", "## Pages", FLOWS_HEADING, SAFETY_HEADING];
-export const REQUIRED_GENERAL_HEADINGS = ["## Overview", "## Base & auth", "## Areas", SAFETY_HEADING];
+// Only the LLM-authored sections are required; Selectors/Destructive/Safety are appended by code.
+export const REQUIRED_AREA_HEADINGS = ["## Purpose", "## Pages", FLOWS_HEADING];
+export const REQUIRED_GENERAL_HEADINGS = ["## Overview", "## Base & auth", "## Areas"];
 
 export interface AreaIndex {
     kind: "area";
-    /** Area routes + routes reachable from the area (what references.routes may cite). */
+    /** Area routes + routes reachable from the area's pages (valid to mention in prose). */
     routes: Set<string>;
     /** Every route in the whole graph — the bar for a route merely mentioned in prose. */
     allRoutes: Set<string>;
-    controls: Set<string>;
-    selectors: Set<string>;
-    /** Control name -> the set of verbatim backtick selector chains observed for it (a name can
-     * recur across pages with different chains, so any one of them is a valid body line). */
-    selectorsByControl: Map<string, Set<string>>;
+    /** Destructive control names — the LLM-authored Flows must not use any of these as a step. */
     destructive: Set<string>;
 }
 
 export interface GeneralIndex {
     kind: "general";
     routes: Set<string>;
-    controls: Set<string>;
     slugs: Set<string>;
 }
 
 export function buildAreaIndex(slice: AreaSlice, graph: InteractionGraph): AreaIndex {
     const routes = new Set<string>(slice.routes);
     const allRoutes = new Set<string>();
-    const controls = new Set<string>();
-    const selectors = new Set<string>();
-    const selectorsByControl = new Map<string, Set<string>>();
     const destructive = new Set<string>(slice.destructive);
     const nodeIds = new Set(slice.nodes.map((n) => n.id));
 
     for (const node of Object.values(graph.nodes)) {
         allRoutes.add(node.url);
     }
-    for (const node of slice.nodes) {
-        for (const control of node.controls) {
-            const name = control.name.trim();
-            if (name) {
-                controls.add(name);
-            }
-            for (const selector of control.selectors) {
-                selectors.add(selector);
-            }
-            const navigational = control.kind === "navigation" || control.kind === "action";
-            if (navigational && name && control.selectors.length > 0) {
-                const chain = control.selectors.map((s) => `\`${s}\``).join(" → ");
-                const set = selectorsByControl.get(name) ?? new Set<string>();
-                set.add(chain);
-                selectorsByControl.set(name, set);
-            }
-        }
-    }
-    // Legitimate cross-area links and persistent chrome genuinely appear on these pages,
-    // so allow them as references rather than triggering needless repair churn.
+    // Cross-area links reachable from this area's pages are legitimate route mentions.
     for (const edge of graph.edges) {
         if (nodeIds.has(edge.from)) {
             const target = graph.nodes[edge.to];
@@ -79,37 +51,19 @@ export function buildAreaIndex(slice: AreaSlice, graph: InteractionGraph): AreaI
             }
         }
     }
-    for (const name of persistentNav(graph)) {
-        controls.add(name);
-    }
-    return { kind: "area", routes, allRoutes, controls, selectors, selectorsByControl, destructive };
+    return { kind: "area", routes, allRoutes, destructive };
 }
 
-export function buildGeneralIndex(
-    graph: InteractionGraph,
-    slices: AreaSlice[],
-    slugs: Map<string | null, string>,
-): GeneralIndex {
+export function buildGeneralIndex(graph: InteractionGraph, slugs: Map<string | null, string>): GeneralIndex {
     const routes = new Set<string>();
-    for (const slice of slices) {
-        for (const route of slice.routes) {
-            routes.add(route);
-        }
-    }
-    const controls = new Set<string>();
     for (const node of Object.values(graph.nodes)) {
-        for (const control of node.controls) {
-            const name = control.name.trim();
-            if (name) {
-                controls.add(name);
-            }
-        }
+        routes.add(node.url);
     }
     const slugSet = new Set<string>();
     for (const slug of slugs.values()) {
         slugSet.add(slug);
     }
-    return { kind: "general", routes, controls, slugs: slugSet };
+    return { kind: "general", routes, slugs: slugSet };
 }
 
 /** A short, sorted, capped rendering of an allowed-token set for repair feedback. */
@@ -145,22 +99,6 @@ function pageHeadings(body: string): string[] {
         }
     }
     return out;
-}
-
-/** Parse a "- <name>: `sel` → `sel`" line, tolerating colons inside the control name. */
-function parseSelectorLine(line: string): { name: string; chain: string } | null {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("- ")) {
-        return null;
-    }
-    const rest = trimmed.slice(2);
-    const idx = rest.indexOf(": `");
-    if (idx === -1) {
-        return null;
-    }
-    const name = rest.slice(0, idx).replace(/^"|"$/g, "").trim();
-    const chain = rest.slice(idx + 2).trim();
-    return { name, chain };
 }
 
 /** The text lines under a "## " section heading (until the next "## "). */
@@ -244,98 +182,36 @@ function verifyStructure(body: string, errors: string[]): void {
     }
 }
 
-function verifyArea(authored: AuthoredSkill, index: AreaIndex, errors: string[]): void {
-    const { body, references } = authored;
-
-    for (const selector of references.selectors) {
-        if (!index.selectors.has(selector)) {
-            errors.push(`Selector \`${selector}\` is not in the data; copy selectors verbatim.`);
-        }
-    }
-    // Destructive integrity is the safety-critical check: the body's destructive set must equal
-    // the graph's, each must be listed under the destructive heading, and none may appear as a flow step.
-    const destructiveSection = linesUnder(body, DESTRUCTIVE_HEADING).join("\n");
-    for (const name of index.destructive) {
-        if (!references.destructive.includes(name)) {
-            errors.push(`Destructive control "${name}" must be listed in the '${DESTRUCTIVE_HEADING}' section.`);
-        }
-        if (!destructiveSection.includes(name)) {
-            errors.push(`Destructive control "${name}" must appear as a bullet under '${DESTRUCTIVE_HEADING}'.`);
-        }
-    }
-    for (const name of references.destructive) {
-        if (!index.destructive.has(name)) {
-            errors.push(`Invented destructive control "${name}" — it is not flagged in the data.`);
-        }
-    }
+function verifyArea(body: string, index: AreaIndex, errors: string[]): void {
+    // Safety-critical: a destructive control must never be written as a flow step (the code
+    // appends the canonical destructive list separately; the model only writes the prose flows).
     for (const token of quotedTokensUnder(body, FLOWS_HEADING)) {
         if (index.destructive.has(token)) {
             errors.push(`Destructive control "${token}" must not be used as a step in '${FLOWS_HEADING}'.`);
         }
     }
-
-    for (const route of references.routes) {
-        if (!body.includes(route)) {
-            errors.push(`Declared route '${route}' is not used in the body.`);
-        }
-    }
+    // A route-shaped "### /path" page heading must be a real route (anti-hallucination); the model
+    // may freely use "### " for non-route subsections (e.g. "### Navigate").
     for (const heading of pageHeadings(body)) {
-        if (!index.routes.has(heading)) {
+        if (heading.startsWith("/") && !index.routes.has(heading)) {
             errors.push(
                 `Page heading '### ${heading}' is not a real route. Allowed routes: ${sortedList(index.routes)}.`,
             );
         }
     }
+    // Any path-like token written in prose must be a real route somewhere in the app.
     for (const token of routeTokens(body)) {
         if (!index.allRoutes.has(token)) {
             errors.push(`Route '${token}' mentioned in the body is not a real route in the app.`);
         }
     }
-
-    // Every backticked token under the selectors heading must be a real selector (the set is finite
-    // and known, so an exact membership test beats guessing what "looks like" a selector).
-    for (const token of backticksUnder(body, SELECTORS_HEADING)) {
-        if (!index.selectors.has(token)) {
-            errors.push(`Body uses selector \`${token}\` that is not in the data.`);
-        }
-    }
-    for (const line of body.split("\n")) {
-        const parsed = parseSelectorLine(line);
-        if (!parsed || !line.includes("`")) {
-            continue;
-        }
-        const valid = index.selectorsByControl.get(parsed.name);
-        if (valid === undefined) {
-            continue;
-        }
-        if (!valid.has(parsed.chain)) {
-            errors.push(
-                `Selector line for "${parsed.name}" must copy a chain from the data verbatim: ${Array.from(valid).join(" | ")}.`,
-            );
-        }
-    }
-
-    const headings = headingSet(body);
-    requireHeadings(headings, REQUIRED_AREA_HEADINGS, errors);
-    if (index.selectors.size > 0) {
-        requireHeadings(headings, [SELECTORS_HEADING], errors);
-    }
-    if (index.destructive.size > 0) {
-        requireHeadings(headings, [DESTRUCTIVE_HEADING], errors);
-    }
+    requireHeadings(headingSet(body), REQUIRED_AREA_HEADINGS, errors);
 }
 
-function verifyGeneral(authored: AuthoredSkill, index: GeneralIndex, errors: string[]): void {
-    const { body, references } = authored;
-    if (references.selectors.length > 0) {
-        errors.push("The general navigation skill must not declare selectors.");
-    }
-    if (references.destructive.length > 0) {
-        errors.push("The general navigation skill must not declare destructive controls.");
-    }
-    for (const route of references.routes) {
-        if (!body.includes(route)) {
-            errors.push(`Declared route '${route}' is not used in the body.`);
+function verifyGeneral(body: string, index: GeneralIndex, errors: string[]): void {
+    for (const token of routeTokens(body)) {
+        if (!index.routes.has(token)) {
+            errors.push(`Route '${token}' mentioned in the body is not a real route in the app.`);
         }
     }
     for (const slug of backticksUnder(body, "## Areas")) {
@@ -349,31 +225,19 @@ function verifyGeneral(authored: AuthoredSkill, index: GeneralIndex, errors: str
 }
 
 /**
- * Verify an authored skill against its ground-truth index. Returns the list of
- * violations (empty means it passed); each string is human- and model-readable and is
- * fed back verbatim as repair feedback.
+ * Verify an authored skill body against its ground-truth index. Checks are purely
+ * over the prose the model wrote (no declared-references step, which proved a brittle
+ * source of false failures): routes it mentions must be real, no destructive control
+ * may appear as a flow step, and the required sections must be present. Returns the
+ * violations (empty = pass); each string is fed back verbatim as repair feedback.
  */
-export function verifyAuthoredSkill(authored: AuthoredSkill, index: AreaIndex | GeneralIndex): string[] {
+export function verifyAuthoredSkill(body: string, index: AreaIndex | GeneralIndex): string[] {
     const errors: string[] = [];
-    verifyStructure(authored.body, errors);
-
-    for (const route of authored.references.routes) {
-        if (!index.routes.has(route)) {
-            errors.push(`Route '${route}' is not in the data. Allowed routes: ${sortedList(index.routes)}.`);
-        }
-    }
-    for (const control of authored.references.controls) {
-        if (!index.controls.has(control)) {
-            errors.push(`Control "${control}" is not in the data. Allowed controls: ${sortedList(index.controls)}.`);
-        } else if (!authored.body.includes(control)) {
-            errors.push(`Declared control "${control}" is not used in the body.`);
-        }
-    }
-
+    verifyStructure(body, errors);
     if (index.kind === "area") {
-        verifyArea(authored, index, errors);
+        verifyArea(body, index, errors);
     } else {
-        verifyGeneral(authored, index, errors);
+        verifyGeneral(body, index, errors);
     }
     return errors;
 }

@@ -1,4 +1,13 @@
-import { ExternalLinkIcon, MoreHorizontalIcon, PlayIcon, RadarIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
+import {
+    DownloadIcon,
+    ExternalLinkIcon,
+    MoreHorizontalIcon,
+    PlayIcon,
+    RadarIcon,
+    RefreshCwIcon,
+    SparklesIcon,
+    Trash2Icon,
+} from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,8 +30,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useCrawlProject, useDeleteProject, useUpdateBaseline, useVerifyProject } from "@/hooks/queries";
-import { ApiError } from "@/lib/api";
+import {
+    useCrawlProject,
+    useDeleteProject,
+    useGenerateSkills,
+    useUpdateBaseline,
+    useVerifyProject,
+} from "@/hooks/queries";
+import { ApiError, skillsExportUrl } from "@/lib/api";
 import type { ProjectView, RunKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -75,6 +90,7 @@ export function ProjectRow({
 
     const verify = useVerifyProject();
     const crawl = useCrawlProject();
+    const generateSkills = useGenerateSkills();
     const updateBaseline = useUpdateBaseline();
     const remove = useDeleteProject();
 
@@ -105,6 +121,24 @@ export function ProjectRow({
             onSuccess: ({ runId }) => onRun(runId, `${project.repo} — baseline crawl`, "crawl"),
             onError: (err) => toast.error(err instanceof ApiError ? err.message : "Could not start crawl"),
         });
+    }
+
+    function onGenerateSkills() {
+        generateSkills.mutate(project.id, {
+            onSuccess: ({ runId }) => onRun(runId, `${project.repo} — skill pack`, "skills"),
+            onError: (err) => toast.error(err instanceof ApiError ? err.message : "Could not start skill authoring"),
+        });
+    }
+
+    function onExportSkills() {
+        // The endpoint sets Content-Disposition: attachment, so an anchor click downloads
+        // the .tar.gz without navigating away from the dashboard.
+        const a = document.createElement("a");
+        a.href = skillsExportUrl(project.id);
+        a.rel = "noreferrer";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
     }
 
     function onSaveBaseline(e: FormEvent<HTMLFormElement>) {
@@ -215,6 +249,17 @@ export function ProjectRow({
                         <DropdownMenuItem onClick={() => setBaselineOpen(true)}>
                             <ExternalLinkIcon />
                             Edit baseline URL…
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                            onClick={onGenerateSkills}
+                            disabled={generateSkills.isPending || !project.graphPresent}>
+                            <SparklesIcon />
+                            {project.skillsPresent ? "Re-generate skills" : "Generate skills"}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={onExportSkills} disabled={!project.skillsPresent}>
+                            <DownloadIcon />
+                            Export skills (.tar.gz)
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem variant="destructive" onClick={() => setRemoveOpen(true)}>

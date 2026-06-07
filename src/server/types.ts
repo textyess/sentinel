@@ -1,5 +1,5 @@
 import type { GenericProjectConfig } from "../adapters/generic";
-import type { PlanStep, StepResult, TestPlan, Verdict } from "../core/verify/types";
+import type { PlanStep, SkillDiscrepancy, StepResult, TestPlan, Verdict } from "../core/verify/types";
 
 /** Which adapter backs a registered project: "generic" (config-driven) or a registered built-in kind. */
 export type AdapterKind = string;
@@ -78,8 +78,8 @@ export interface RunRecord {
     repo: string;
     pr: number;
     title: string;
-    /** Absent is treated as "verify"; "crawl" and "autodetect" runs are excluded from the gallery. */
-    kind?: "verify" | "crawl" | "autodetect";
+    /** Absent is treated as "verify"; "crawl", "autodetect", and "skills" runs are excluded from the gallery. */
+    kind?: "verify" | "crawl" | "autodetect" | "skills";
     status: RunStatus;
     /** The comment id that triggered the run, or null for a manual trigger. */
     triggerCommentId: number | null;
@@ -124,6 +124,8 @@ export interface StepResultView {
     screenshotUrl: string | null;
     consoleErrors: string[];
     networkErrors: StepResult["networkErrors"];
+    /** Skill-vs-live divergences noticed on this step; omitted when there were none. */
+    discrepancies?: SkillDiscrepancy[];
 }
 
 /**

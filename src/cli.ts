@@ -8,6 +8,7 @@ import {
     runSkills,
     runSkillsExport,
     runSkillsImport,
+    runSkillsPromote,
     runSmoke,
     runVerify,
 } from "./commands";
@@ -80,6 +81,24 @@ skills
     .option("--overwrite", "overwrite skills that already exist")
     .action((dir: string, opts: { overwrite?: boolean }) =>
         wrap(() => runSkillsImport(dir, Boolean(opts.overwrite)))(),
+    );
+
+skills
+    .command("promote")
+    .description(
+        "Reconcile the skill pack from a fresh BASELINE re-crawl — the only path that rewrites skills/. Refuses preview-sourced input.",
+    )
+    .option("--proposals <path>", "a verify run's skill-proposals.json — used as a drift gate + report, never copied")
+    .option("--max-pages <n>", "maximum unique page states to map", "40")
+    .option("--actuations-per-page <n>", "max controls to actuate per page", "6")
+    .action((opts: { proposals?: string; maxPages: string; actuationsPerPage: string }) =>
+        wrap(() =>
+            runSkillsPromote(
+                opts.proposals ?? null,
+                parsePositiveInt(opts.maxPages, 40),
+                parsePositiveInt(opts.actuationsPerPage, 6),
+            ),
+        )(),
     );
 
 program

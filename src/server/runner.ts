@@ -7,10 +7,12 @@ import {
     detectProjectConfig,
     endRun,
     GENERIC_SAFETY_DEFAULTS,
+    generateSkillPack,
     getPrMeta,
     isGhAuthenticated,
     llmCredentialIssue,
     loadEnvConfig,
+    loadGraph,
     logger,
     redactSecret,
     resolveProductionUrl,
@@ -26,7 +28,14 @@ import { formatErrorComment, formatVerdictComment, postVerdict } from "./comment
 import { loadServerConfig, reportUrl } from "./config";
 import { credEnvNames, slug } from "./naming";
 import { singleton } from "./singleton";
-import { publishAutodetectDone, publishCrawlDone, publishDone, publishError } from "./sse";
+import {
+    primeStream,
+    publishAutodetectDone,
+    publishCrawlDone,
+    publishDone,
+    publishError,
+    publishSkillsDone,
+} from "./sse";
 import { upsertRunRecord } from "./store";
 import type { AutodetectProposal, ProjectRecord, RunRecord, RunStatus } from "./types";
 
@@ -287,6 +296,7 @@ export function triggerRunInBackground(
     triggerCommentId: number | null,
 ): string {
     const runId = makeRunId(project.id, prNumber);
+    primeStream(runId);
     void runProject(project, prNumber, triggerCommentId, { runId }).catch((error) => {
         logger.warn(`Run ${runId} crashed: ${msg(error)}`);
     });
@@ -430,8 +440,122 @@ export async function crawlProject(
 
 export function triggerCrawlInBackground(project: ProjectRecord, opts: CrawlOptions = {}): string {
     const runId = `${project.id}__crawl-${stamp()}`;
+    primeStream(runId);
     void crawlProject(project, { ...opts, runId }).catch((error) => {
         logger.warn(`Crawl ${runId} crashed: ${msg(error)}`);
+    });
+    return runId;
+}
+
+/** Per-project guard so one project's skills aren't authored twice at once. */
+const skillsInFlight = singleton("runner.skillsInFlight", () => new Set<string>());
+export function isSkillsRunning(projectId: string): boolean {
+    return skillsInFlight.has(projectId);
+}
+
+/**
+ * Author the navigation skill pack for a project from the dashboard. Mirrors
+ * crawlProject: shares the global slot semaphore + Langfuse bracketing (so it never
+ * runs concurrently with a crawl/verify or cross-contaminates the process-global
+ * trace) and streams progress. The LLM is required and the baseline graph must exist;
+ * both preconditions surface as a blocked run rather than a crash.
+ */
+export async function generateSkillsProject(
+    project: ProjectRecord,
+    opts: { runId?: string } = {},
+): Promise<{ runId: string; status: RunStatus }> {
+    const env = loadEnvConfig();
+    const config = loadServerConfig();
+    const runId = opts.runId ?? `${project.id}__skills-${stamp()}`;
+    const flightKey = project.id;
+
+    if (skillsInFlight.has(flightKey)) {
+        return { runId, status: "blocked" };
+    }
+    skillsInFlight.add(flightKey);
+
+    const record: RunRecord = {
+        runId,
+        projectId: project.id,
+        repo: project.repo,
+        pr: 0,
+        title: `${project.repo} — skill pack`,
+        kind: "skills",
+        status: "running",
+        triggerCommentId: null,
+        runDir: null,
+        manifestPath: null,
+        videoPath: null,
+        verdict: null,
+        startedAt: new Date().toISOString(),
+        finishedAt: null,
+        error: null,
+    };
+
+    const fail = async (status: RunStatus, reason: string): Promise<{ runId: string; status: RunStatus }> => {
+        record.status = status;
+        record.error = redactSecret(reason);
+        record.finishedAt = new Date().toISOString();
+        await upsertRunRecord(record);
+        publishError(runId, reason);
+        return { runId, status };
+    };
+
+    try {
+        await upsertRunRecord(record);
+
+        const llmIssue = llmCredentialIssue(env.llmProvider);
+        if (llmIssue) {
+            return await fail(
+                "blocked",
+                `Skill authoring needs the language model — it isn't configured (${llmIssue}).`,
+            );
+        }
+        const graphFile = path.join(env.outputDir, project.id, "graph", "latest.json");
+        if (!fs.existsSync(graphFile)) {
+            return await fail(
+                "blocked",
+                `I need a baseline crawl of ${project.displayName} before I can author skills — build the baseline first.`,
+            );
+        }
+
+        await acquireSlot(config.maxConcurrent);
+        try {
+            const reasoner = createReasoner(env);
+            startRun(`skills-${project.id}`, {
+                kind: "skills-server",
+                model: reasoner.modelLabel,
+                project: project.id,
+            });
+            try {
+                const graph = loadGraph(graphFile);
+                const pack = await runWithProgress(runId, () => {
+                    logger.info(`Authoring skills for ${project.displayName} from the baseline graph ...`);
+                    return generateSkillPack({ graph, outputDir: env.outputDir, adapterId: project.id, reasoner });
+                });
+                record.status = "passed";
+                record.finishedAt = new Date().toISOString();
+                await upsertRunRecord(record);
+                publishSkillsDone(runId, { skillCount: pack.skillCount, areas: pack.manifest.areas.length });
+                return { runId, status: record.status };
+            } finally {
+                await endRun();
+            }
+        } catch (error) {
+            return await fail("errored", `Skill authoring failed: ${msg(error)}`);
+        } finally {
+            releaseSlot();
+        }
+    } finally {
+        skillsInFlight.delete(flightKey);
+    }
+}
+
+export function triggerSkillsInBackground(project: ProjectRecord): string {
+    const runId = `${project.id}__skills-${stamp()}`;
+    primeStream(runId);
+    void generateSkillsProject(project, { runId }).catch((error) => {
+        logger.warn(`Skills ${runId} crashed: ${msg(error)}`);
     });
     return runId;
 }
@@ -587,6 +711,7 @@ export async function autodetectProject(input: AutodetectInput): Promise<{ runId
 
 export function triggerAutodetectInBackground(input: AutodetectInput): string {
     const runId = `${slug(input.repo)}__autodetect-${stamp()}`;
+    primeStream(runId);
     void autodetectProject({ ...input, runId }).catch((error) => {
         logger.warn(`Auto-detect ${runId} crashed: ${msg(error)}`);
     });

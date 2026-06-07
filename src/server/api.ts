@@ -3,7 +3,14 @@ import * as path from "node:path";
 import { z } from "zod";
 import type { GenericProjectConfig } from "../adapters/generic";
 import type { StepResult, VerifyManifest } from "../index";
-import { adapterKinds, isAdapterKind, isGhAuthenticated, llmCredentialIssue, loadEnvConfig } from "../index";
+import {
+    adapterKinds,
+    buildPortablePack,
+    isAdapterKind,
+    isGhAuthenticated,
+    llmCredentialIssue,
+    loadEnvConfig,
+} from "../index";
 import { HttpError } from "./errors";
 import { assertWithin } from "./files";
 import { indexRuns, resolveRunArtifacts, screenshotUrl, statusFromOutcome, videoUrl } from "./indexer";
@@ -13,11 +20,14 @@ import {
     isAutodetectRunning,
     isCrawlRunning,
     isPrRunning,
+    isSkillsRunning,
     triggerAutodetectInBackground,
     triggerCrawlInBackground,
     triggerRunInBackground,
+    triggerSkillsInBackground,
 } from "./runner";
 import { getProject, listProjects, listRunRecords, removeProject, removeRunRecord, upsertProject } from "./store";
+import { tarGzip } from "./targz";
 import type { ProjectRecord, RunManifestView, RunRecord, RunSummary, StepResultView } from "./types";
 
 /** A RegExpSource that the core will compile with `new RegExp(...)` — reject one that can't. */
@@ -89,6 +99,8 @@ const projectSchema = z
 export interface ProjectView extends ProjectRecord {
     graphPresent: boolean;
     credsConfigured: boolean;
+    /** True when a generated skill pack exists on disk (so it can be exported). */
+    skillsPresent: boolean;
     /** False for a public (no-login) generic project; true otherwise. */
     authRequired: boolean;
 }
@@ -98,6 +110,7 @@ export async function getProjects(): Promise<ProjectView[]> {
     const projects = await listProjects();
     return projects.map((p) => {
         const graphPresent = fs.existsSync(path.join(env.outputDir, p.id, "graph", "latest.json"));
+        const skillsPresent = fs.existsSync(path.join(env.outputDir, p.id, "skills", "pack.json"));
         // A generic project's adapter declares whether it needs login (default true);
         // built-in adapters always do.
         const authRequired = p.adapterKind === "generic" ? (p.adapter?.authRequired ?? true) : true;
@@ -111,7 +124,7 @@ export async function getProjects(): Promise<ProjectView[]> {
                         (process.env[p.adapter.passwordEnv] || env.password),
                 )
               : Boolean(env.email && env.password);
-        return { ...p, graphPresent, credsConfigured, authRequired };
+        return { ...p, graphPresent, credsConfigured, skillsPresent, authRequired };
     });
 }
 
@@ -207,6 +220,41 @@ export async function triggerCrawl(projectId: string, body: unknown): Promise<{ 
     return { runId, status: "running" };
 }
 
+/** Author (or re-author) the navigation skill pack for a project in the background. */
+export async function triggerSkills(projectId: string): Promise<{ runId: string; status: string }> {
+    const project = await getProject(projectId);
+    if (!project) {
+        throw new HttpError(404, `Unknown project: ${projectId}`);
+    }
+    if (isSkillsRunning(projectId)) {
+        throw new HttpError(409, `Skill authoring for ${projectId} is already in progress.`);
+    }
+    const runId = triggerSkillsInBackground(project);
+    return { runId, status: "running" };
+}
+
+/** Build a portable `.tar.gz` of a project's skill pack for download. */
+export async function exportSkillsArchive(projectId: string): Promise<{ filename: string; body: Buffer }> {
+    const project = await getProject(projectId);
+    if (!project) {
+        throw new HttpError(404, `Unknown project: ${projectId}`);
+    }
+    let files: ReturnType<typeof buildPortablePack>;
+    try {
+        files = buildPortablePack(loadEnvConfig().outputDir, project.id);
+    } catch {
+        // The only expected failure is "no pack yet" — surface it as a clean 409.
+        throw new HttpError(409, "No skill pack to export yet. Generate skills for this project first.");
+    }
+    // Nest under a single folder so extraction yields one clean directory.
+    const root = `${project.id}-skills`;
+    const body = tarGzip(
+        files.map((f) => ({ name: `${root}/${f.name}`, content: f.content })),
+        Math.floor(Date.now() / 1000),
+    );
+    return { filename: `${root}.tar.gz`, body };
+}
+
 const autodetectSchema = z.object({
     repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/, "repo must be owner/name"),
     baselineUrl: z.string().url().nullable().optional(),
@@ -252,6 +300,7 @@ function toStepResultView(runId: string, r: StepResult): StepResultView {
         screenshotUrl: r.screenshot ? screenshotUrl(runId, r.screenshot) : null,
         consoleErrors: r.consoleErrors,
         networkErrors: r.networkErrors,
+        ...(r.discrepancies ? { discrepancies: r.discrepancies } : {}),
     };
 }
 

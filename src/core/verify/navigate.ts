@@ -18,6 +18,8 @@ export interface NavOutcome {
     method: "already" | "click" | "click-path" | "goto";
     ok: boolean;
     observation: string;
+    /** The templated route actually reached — lets a caller compare it to what a skill expected. */
+    landed: string;
 }
 
 /** Clicks to chase toward the target (open a menu, click the revealed link, ...) before giving up. */
@@ -170,7 +172,7 @@ export async function navigateLikeUser(
     const targetNorm = templated(targetPath, opts.baseUrl);
     let landed = templated(page.url(), opts.baseUrl);
     if (landed === targetNorm) {
-        return { method: "already", ok: true, observation: `already at ${targetNorm}` };
+        return { method: "already", ok: true, observation: `already at ${targetNorm}`, landed: targetNorm };
     }
 
     await dismissOverlays(page);
@@ -184,13 +186,23 @@ export async function navigateLikeUser(
             const route = trail.join(" → ");
             const method = trail.length > 1 ? "click-path" : "click";
             if (direct.login) {
-                return { method, ok: false, observation: `clicking ${route} dropped to login` };
+                return { method, ok: false, observation: `clicking ${route} dropped to login`, landed: direct.landed };
             }
             if (direct.landed === targetNorm) {
-                return { method, ok: true, observation: `clicked ${route} to open ${targetNorm}` };
+                return {
+                    method,
+                    ok: true,
+                    observation: `clicked ${route} to open ${targetNorm}`,
+                    landed: direct.landed,
+                };
             }
             if (direct.moved) {
-                return { method, ok: true, observation: `clicked ${route}; landed at ${direct.landed}` };
+                return {
+                    method,
+                    ok: true,
+                    observation: `clicked ${route}; landed at ${direct.landed}`,
+                    landed: direct.landed,
+                };
             }
             // The click did nothing — drop it from the trail and let the map pick the next move.
             trail.pop();
@@ -212,6 +224,7 @@ export async function navigateLikeUser(
                 method: "click-path",
                 ok: false,
                 observation: `navigating via ${trail.join(" → ")} dropped to login`,
+                landed,
             };
         }
         if (landed === targetNorm) {
@@ -219,6 +232,7 @@ export async function navigateLikeUser(
                 method: "click-path",
                 ok: true,
                 observation: `navigated via ${trail.join(" → ")} to ${targetNorm}`,
+                landed,
             };
         }
     }
@@ -231,15 +245,17 @@ export async function navigateLikeUser(
             method: "goto",
             ok: false,
             observation: `could not reach ${targetNorm}: ${error instanceof Error ? error.message : String(error)}`,
+            landed,
         };
     }
     landed = await settle(page, opts);
     if (isLoginPath(page.url(), opts.loginPath)) {
-        return { method: "goto", ok: false, observation: "redirected to login" };
+        return { method: "goto", ok: false, observation: "redirected to login", landed };
     }
     return {
         method: "goto",
         ok: landed === targetNorm,
         observation: `no in-app link to ${targetNorm}; opened it directly`,
+        landed,
     };
 }

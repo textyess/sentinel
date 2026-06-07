@@ -3,15 +3,18 @@ import * as path from "node:path";
 import type { Page } from "playwright";
 import { z } from "zod";
 import type { DriverSession } from "../browser/driver";
-import { clickBySelectors, fillBySelectors, moveCursorToLocator } from "../browser/interact";
+import { clickBySelectorsTracked, fillBySelectorsTracked, moveCursorToLocator } from "../browser/interact";
 import { dismissOverlays, extractControls, waitForInteractive } from "../graph/extract";
 import type { ControlRef, InteractionGraph } from "../graph/types";
-import { stripQuery } from "../graph/url";
+import { isLoginPath, normalizePath, stripQuery } from "../graph/url";
 import { humanDwell, type PacingOptions, thinkPause } from "../human/pacing";
 import { logger } from "../logger";
 import type { Reasoner } from "../reasoner/types";
+import type { PageSkill, PageSkillIndex } from "../skills/load";
+import { destinationDrift, isSuccessfulClick, missingControl, selectorStale } from "./discrepancy";
 import { navigateLikeUser, toTargetPath } from "./navigate";
-import type { PlanStep, StepResult, TestPlan, Verdict } from "./types";
+import { discrepancyVerdictNote } from "./proposals";
+import type { PlanStep, SkillDiscrepancy, StepResult, TestPlan, Verdict } from "./types";
 
 export interface ExecuteOptions {
     reasoner: Reasoner;
@@ -24,6 +27,8 @@ export interface ExecuteOptions {
     loginPath: string;
     /** The baseline interaction graph — the map a 'navigate' step clicks through, like a user. */
     graph: InteractionGraph;
+    /** Per-route baseline page skills for selector-first execution; null = live selectors only. */
+    pageSkills: PageSkillIndex | null;
 }
 
 const RESOLVE_SCHEMA = z.object({ index: z.number().int(), confidence: z.enum(["high", "medium", "low"]) });
@@ -97,6 +102,34 @@ async function hoverFirst(page: Page, selectors: string[], timeoutMs: number): P
     return false;
 }
 
+/**
+ * Ranked, self-healing selectors for acting on a live control: the baseline skill's
+ * exact selectors first (a crawl verified them, so they're the most stable), then the
+ * live page's own selectors as fallback — `clickBySelectors` / `fillBySelectors` walk the
+ * list until one resolves. The skill control is matched to the live one by role+name+href;
+ * a null index or no match yields just the live selectors, so this is purely additive and
+ * never bypasses safety (the live control has already cleared the destructive guard).
+ */
+export function candidateSelectors(live: ControlRef, pageSkill: PageSkill | null): string[] {
+    const match = pageSkill?.controls.find(
+        (control) => control.role === live.role && control.name === live.name && control.href === live.href,
+    );
+    const seen = new Set<string>();
+    const ranked: string[] = [];
+    for (const selector of match ? [...match.selectors, ...live.selectors] : live.selectors) {
+        if (!seen.has(selector)) {
+            seen.add(selector);
+            ranked.push(selector);
+        }
+    }
+    return ranked;
+}
+
+/** The templated route the page is on right now — the key into the page-skill index. */
+function liveRouteKey(page: Page, baseUrl: string): string {
+    return normalizePath(page.url(), baseUrl).path;
+}
+
 async function executeStep(
     session: DriverSession,
     step: PlanStep,
@@ -108,6 +141,7 @@ async function executeStep(
     const networkBefore = session.network.length;
     let status: StepResult["status"] = "ok";
     let observation = "";
+    const discrepancies: SkillDiscrepancy[] = [];
 
     await thinkPause(page, options.pacing);
     try {
@@ -129,7 +163,21 @@ async function executeStep(
             await humanDwell(page, options.pacing);
             status = outcome.ok ? "ok" : "failed";
             observation = outcome.observation;
+            // Did clicking the app's own nav land where the skill said it would? Only a
+            // SUCCESSFUL in-app click counts — a failed nav or a login bounce is not drift.
+            const expected = normalizePath(targetPath, session.baseUrl).path;
+            const navDrift = destinationDrift(
+                options.pageSkills?.get(expected) ?? null,
+                expected,
+                outcome.landed,
+                isSuccessfulClick(outcome.method, outcome.ok),
+            );
+            if (navDrift) {
+                discrepancies.push(navDrift);
+            }
         } else if (step.action === "click" || step.action === "hover") {
+            const routeKey = liveRouteKey(page, session.baseUrl);
+            const pageSkill = options.pageSkills?.get(routeKey) ?? null;
             const controls = await extractControls(page, options.destructive, session.baseUrl).catch(
                 (): ControlRef[] => [],
             );
@@ -138,20 +186,53 @@ async function executeStep(
             if (!control) {
                 status = "failed";
                 observation = `control not found: "${step.target}"`;
+                const miss = missingControl(routeKey, pageSkill, step.target);
+                if (miss) {
+                    discrepancies.push(miss);
+                }
             } else if (control.destructive) {
                 status = "blocked";
                 observation = `"${control.name}" looks like a write/destructive action — not clicked (read-only)`;
+            } else if (step.action === "click") {
+                const selectors = candidateSelectors(control, pageSkill);
+                const used = await clickBySelectorsTracked(page, selectors, options.clickTimeoutMs);
+                await waitForInteractive(page, options.settleMs);
+                await dismissOverlays(page);
+                const did = used !== null;
+                status = did ? "ok" : "failed";
+                observation = did ? `clicked "${control.name}"` : `couldn't click "${control.name}"`;
+                if (did) {
+                    const stale = selectorStale(routeKey, pageSkill, control, used);
+                    if (stale) {
+                        discrepancies.push(stale);
+                    }
+                    // A click that changed route is a navigation: did it land where the link
+                    // pointed? Skip a bounce to login — that's an auth failure, not skill drift.
+                    const after = liveRouteKey(page, session.baseUrl);
+                    if (control.href !== null && after !== routeKey && !isLoginPath(page.url(), options.loginPath)) {
+                        const expected = normalizePath(control.href, session.baseUrl).path;
+                        const clickDrift = destinationDrift(
+                            options.pageSkills?.get(expected) ?? null,
+                            expected,
+                            after,
+                            true,
+                        );
+                        if (clickDrift) {
+                            discrepancies.push(clickDrift);
+                        }
+                    }
+                }
             } else {
-                const did =
-                    step.action === "click"
-                        ? await clickBySelectors(page, control.selectors, options.clickTimeoutMs)
-                        : await hoverFirst(page, control.selectors, options.clickTimeoutMs);
+                const selectors = candidateSelectors(control, pageSkill);
+                const did = await hoverFirst(page, selectors, options.clickTimeoutMs);
                 await waitForInteractive(page, options.settleMs);
                 await dismissOverlays(page);
                 status = did ? "ok" : "failed";
-                observation = did ? `${step.action}ed "${control.name}"` : `couldn't ${step.action} "${control.name}"`;
+                observation = did ? `hovered "${control.name}"` : `couldn't hover "${control.name}"`;
             }
         } else if (step.action === "type" || step.action === "select") {
+            const routeKey = liveRouteKey(page, session.baseUrl);
+            const pageSkill = options.pageSkills?.get(routeKey) ?? null;
             const inputs = (
                 await extractControls(page, options.destructive, session.baseUrl).catch((): ControlRef[] => [])
             ).filter((c) => c.kind === "input");
@@ -160,10 +241,22 @@ async function executeStep(
             if (!control) {
                 status = "failed";
                 observation = `input not found: "${step.target}"`;
+                const miss = missingControl(routeKey, pageSkill, step.target);
+                if (miss) {
+                    discrepancies.push(miss);
+                }
             } else {
-                const did = await fillBySelectors(page, control.selectors, step.value ?? "", options.clickTimeoutMs);
+                const selectors = candidateSelectors(control, pageSkill);
+                const used = await fillBySelectorsTracked(page, selectors, step.value ?? "", options.clickTimeoutMs);
+                const did = used !== null;
                 status = did ? "ok" : "failed";
                 observation = did ? `typed into "${control.name}"` : `couldn't type into "${control.name}"`;
+                if (did) {
+                    const stale = selectorStale(routeKey, pageSkill, control, used);
+                    if (stale) {
+                        discrepancies.push(stale);
+                    }
+                }
             }
         } else if (step.action === "scroll") {
             await page.mouse.wheel(0, 600).catch(() => {});
@@ -201,7 +294,20 @@ async function executeStep(
         .map((e) => ({ url: stripQuery(e.url), status: e.status }));
     const consoleErrors = session.consoleErrors.slice(consoleBefore);
 
-    return { index, step, status, observation, screenshot, consoleErrors, networkErrors };
+    if (discrepancies.length > 0) {
+        observation = `${observation} [skill drift: ${discrepancies.map((d) => d.kind).join(", ")}]`;
+    }
+
+    return {
+        index,
+        step,
+        status,
+        observation,
+        screenshot,
+        consoleErrors,
+        networkErrors,
+        ...(discrepancies.length > 0 ? { discrepancies } : {}),
+    };
 }
 
 export async function executePlan(
@@ -233,9 +339,11 @@ export async function judgeVerdict(
     const stepLines = results
         .map((r) => `${r.index + 1}. [${r.status}] ${r.step.action} "${r.step.target}" — ${r.observation}`)
         .join("\n");
+    const driftNote = discrepancyVerdictNote(results.flatMap((r) => r.discrepancies ?? []));
+    const driftBlock = driftNote ? `\n\n${driftNote}` : "";
     return reasoner
         .generateObject({
-            prompt: `PR: ${prTitle}\n${prBody}\n\nTest goal: ${plan.goal}\n\nExecuted steps:\n${stepLines}\n\nDid the PR's change work as claimed, based ONLY on what the steps observed? A 'blocked' step is an intentional read-only stop (e.g. a write boundary), NOT a failure. Give outcome pass/fail/uncertain, confidence, a short calm evidence-first summary, and 2-4 evidence bullets.`,
+            prompt: `PR: ${prTitle}\n${prBody}\n\nTest goal: ${plan.goal}\n\nExecuted steps:\n${stepLines}${driftBlock}\n\nDid the PR's change work as claimed, based ONLY on what the steps observed? A 'blocked' step is an intentional read-only stop (e.g. a write boundary), NOT a failure. Give outcome pass/fail/uncertain, confidence, a short calm evidence-first summary, and 2-4 evidence bullets.`,
             system: "You are Sentinel, a precise QA agent. Judge whether a PR does what it claims from the executed test steps. Prefer 'uncertain' over guessing; never claim a pass you can't support.",
             schema: VERDICT_SCHEMA,
             maxTokens: 600,

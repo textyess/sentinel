@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { graphScreenshotDir } from "../graph/store";
 import type { InteractionGraph } from "../graph/types";
+import { logger } from "../logger";
 import type { Reasoner } from "../reasoner/types";
 import { redactSecret } from "../safety/redact";
 import { authorAreaSkill, authorGeneralSkill } from "./author";
@@ -148,6 +149,7 @@ export async function generateSkillPack(args: GenerateSkillPackArgs): Promise<Sk
     const docs: SkillDoc[] = [];
     for (const slice of slices) {
         const slug = areaSlug(adapterId, slice.area);
+        logger.info(`Authoring ${slug} (${slice.nodes.length} page(s)) ...`);
         docs.push({
             slug,
             frontmatter: areaFrontmatter(graph, adapterId, slice),
@@ -157,6 +159,7 @@ export async function generateSkillPack(args: GenerateSkillPackArgs): Promise<Sk
     }
 
     const generalSlug = navigationSlug(adapterId);
+    logger.info(`Authoring ${generalSlug} (general navigation) ...`);
     docs.push({
         slug: generalSlug,
         frontmatter: generalFrontmatter(graph, adapterId, slices),

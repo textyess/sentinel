@@ -25,6 +25,7 @@ import { synthesizeSiteMap } from "./core/sitemap/synthesize";
 import { exportSkillPack } from "./core/skills/export";
 import { generateSkillPack } from "./core/skills/generate";
 import { importSkillPack } from "./core/skills/import";
+import { type DriftSignal, reconcileSkillPack } from "./core/skills/reconcile";
 import type { BlockedRequest, Credentials, RepoAdapter, SafetyConfig } from "./core/types";
 import { planForProject, runVerifyForProject } from "./core/verify/run";
 
@@ -278,6 +279,74 @@ export async function runSkills(): Promise<void> {
     logger.success(`Skill pack written -> ${pack.dir} (${pack.skillCount} skill(s)).`);
     for (const area of pack.manifest.areas) {
         logger.info(`  ${area.slug}: ${area.routes.length} route(s)`);
+    }
+    await reportRunCost();
+}
+
+/**
+ * Phase E: reconcile/promote the skill pack — the ONLY path besides `sentinel skills`
+ * that rewrites skills/, and it does so by re-deriving from a fresh, read-only BASELINE
+ * crawl, never from a preview. An optional verify-run `skill-proposals.json` is used only
+ * as a drift report and a safety gate (reconcile refuses if its source URL is the crawl
+ * target); its contents are never copied into a skill. You running this is the human gate.
+ */
+export async function runSkillsPromote(
+    proposalsPath: string | null,
+    maxPages: number,
+    actuationsPerPage: number,
+): Promise<void> {
+    logger.banner("Phase E skills — reconcile/promote from a fresh baseline crawl");
+    const env = loadEnvConfig();
+    const adapter = getAdapter();
+    requireCredentials(adapter);
+
+    const credentialIssue = llmCredentialIssue(env.llmProvider);
+    if (credentialIssue) {
+        throw new Error(
+            `${credentialIssue} (provider=${env.llmProvider}). Reconcile re-authors skills and needs the LLM — ` +
+                "set it in apps/qa-agent/.env, or change SENTINEL_LLM_PROVIDER / SENTINEL_LLM_MODEL.",
+        );
+    }
+
+    let drift: DriftSignal | null = null;
+    if (proposalsPath) {
+        if (!fs.existsSync(proposalsPath)) {
+            throw new Error(`No proposals file at ${proposalsPath}.`);
+        }
+        const parsed = JSON.parse(fs.readFileSync(proposalsPath, "utf8")) as Partial<DriftSignal>;
+        // Validate the shape before it feeds the safety gate — a malformed file must fail
+        // with a clear error, never crash opaquely or hand previewSourceRefusal a bad URL.
+        if (typeof parsed.targetUrl !== "string" || !Array.isArray(parsed.proposals)) {
+            throw new Error(
+                `${proposalsPath} is not a valid skill-proposals.json (need a "targetUrl" string and a "proposals" array).`,
+            );
+        }
+        drift = { targetUrl: parsed.targetUrl, proposals: parsed.proposals };
+        logger.warn(
+            `Drift signal: ${drift.proposals.length} proposal(s) recorded against ${drift.targetUrl} ` +
+                "(used as a gate + report only — never copied into skills/).",
+        );
+    }
+
+    logger.info(`Re-crawling the BASELINE read-only: ${adapter.baseUrl} ...`);
+    const reasoner = createReasoner(env);
+    startRun("skills-promote", { kind: "skills", model: reasoner.modelLabel });
+
+    const result = await reconcileSkillPack({
+        adapter,
+        env,
+        outputDir: env.outputDir,
+        maxPages,
+        actuationsPerPage,
+        reasoner,
+        gitSha: currentGitSha(REPO_ROOT),
+        drift,
+    });
+    logger.success(
+        `Reconciled skill pack -> ${result.pack.dir} (${result.pack.skillCount} skill(s)) from a fresh baseline crawl.`,
+    );
+    if (result.driftedRoutes.length > 0) {
+        logger.info(`Drift had been reported on: ${result.driftedRoutes.join(", ")}`);
     }
     await reportRunCost();
 }

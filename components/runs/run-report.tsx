@@ -1,6 +1,13 @@
 "use client";
 
-import { ArrowLeftIcon, ExternalLinkIcon, FilmIcon, GitPullRequestIcon, ShieldCheckIcon } from "lucide-react";
+import {
+    AlertTriangleIcon,
+    ArrowLeftIcon,
+    ExternalLinkIcon,
+    FilmIcon,
+    GitPullRequestIcon,
+    ShieldCheckIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { EyeMark } from "@/components/brand/eye-mark";
 import { RunSteps } from "@/components/runs/run-steps";
@@ -162,6 +169,40 @@ function Hero({ m }: { m: RunManifestView }) {
     );
 }
 
+function SkillDriftNote({ results }: { results: RunManifestView["results"] }) {
+    const drift = results.flatMap((r) => r.discrepancies ?? []);
+    if (drift.length === 0) {
+        return null;
+    }
+    return (
+        <div className="grid gap-2 rounded-xl border border-uncertain/30 bg-uncertain/5 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+                <AlertTriangleIcon className="size-4 text-uncertain" />
+                <span className="text-sm font-medium">Navigation skill may be out of date</span>
+                <span className="text-xs text-muted-foreground">
+                    {drift.length} divergence{drift.length === 1 ? "" : "s"} from the baseline
+                </span>
+            </div>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+                The baseline navigation skill diverged from the preview. The preview is the changed app, so this is
+                often the PR's intended change — it was weighed into the verdict, not treated as a defect. Refresh the
+                skill out of band with a baseline re-crawl.
+            </p>
+            <ul className="grid gap-1 border-t border-uncertain/20 pt-2">
+                {drift.slice(0, 6).map((d, i) => (
+                    <li key={i} className="flex gap-2 text-xs text-foreground/80">
+                        <code className="shrink-0 rounded bg-muted px-1 py-0.5 font-mono text-[10px]">{d.kind}</code>
+                        <span className="min-w-0">
+                            <span className="font-mono text-muted-foreground">{d.route}</span> — {d.detail}
+                        </span>
+                    </li>
+                ))}
+                {drift.length > 6 && <li className="text-xs text-muted-foreground">…and {drift.length - 6} more</li>}
+            </ul>
+        </div>
+    );
+}
+
 function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
     return (
         <section className="grid gap-4">
@@ -227,6 +268,8 @@ function Report({ m }: { m: RunManifestView }) {
             </header>
 
             <Hero m={m} />
+
+            <SkillDriftNote results={m.results} />
 
             <Section title="Plan" subtitle={m.plan.goal}>
                 <div className="grid gap-4">

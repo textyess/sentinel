@@ -13,11 +13,12 @@ import { getChangedFiles, getPrDiff, getPrMeta, type PrMeta } from "../pr/github
 import type { Reasoner } from "../reasoner/types";
 import { runProductionPreflight } from "../safety/production-guard";
 import { redactSecret } from "../safety/redact";
-import { loadSkillsForRoutes } from "../skills/load";
+import { loadPageSkillIndex, loadSkillsForRoutes } from "../skills/load";
 import type { BlockedRequest, RepoAdapter } from "../types";
 import { executePlan, judgeVerdict } from "./execute";
 import { navigateLikeUser, toTargetPath } from "./navigate";
 import { generatePlan } from "./plan";
+import { buildSkillProposals } from "./proposals";
 import type { StepResult, TestPlan, Verdict, VerifyManifest } from "./types";
 
 /** Filesystem-safe timestamp for run directories. */
@@ -181,6 +182,13 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
 
     const { meta, changedFiles, routes, graph, plan, runDir, skillsUsed } = await planForProject(args);
 
+    // Exact baseline selectors for the affected routes, for selector-first execution.
+    // Reads the same pack as the planner; null until `sentinel skills` has run.
+    const pageSkills = loadPageSkillIndex(args.outputDir, adapter.id, graph, routes);
+    if (pageSkills) {
+        logger.info(`Page skills: ${pageSkills.slugs.join(", ")} (${pageSkills.routes.length} route(s))`);
+    }
+
     logger.info(`Target: ${targetUrl}`);
     // The adapter is already scoped to targetUrl, so the preflight checks the real target.
     const preflight = await runProductionPreflight(adapter, allowProdWrites);
@@ -239,6 +247,7 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
             pacing: pacingFromEnv(env),
             loginPath: adapter.auth.loginPath,
             graph,
+            pageSkills,
         });
         logger.info("Judging ...");
         verdict = await judgeVerdict(reasoner, meta.title, meta.body, plan, results);
@@ -256,6 +265,7 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
         changedFiles,
         affectedRoutes: routes,
         skillsUsed,
+        pageSkillsUsed: pageSkills?.slugs ?? [],
         readOnly: preflight.effectiveReadOnly,
         blockedWrites: session.blocked.filter((b) => b.reason === "mutation").length,
         model: reasoner.modelLabel,
@@ -268,6 +278,25 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
     // The manifest is a shared artifact (a PR comment is built from it) — redact before disk.
     fs.writeFileSync(path.join(runDir, "manifest.json"), redactSecret(JSON.stringify(manifest, null, 2)));
     logVerdict(manifest);
+
+    // Inert skill-drift proposals — written to the run dir only, NEVER to skills/. Promotion
+    // is a separate, baseline-gated step (`skills reconcile`); this is just surfaced signal.
+    const proposals = buildSkillProposals(
+        results.flatMap((r) => r.discrepancies ?? []),
+        {
+            pr: meta.number,
+            headSha: meta.headSha,
+            baselineGitSha: graph.gitSha,
+            targetUrl,
+            createdAt: new Date().toISOString(),
+        },
+    );
+    if (proposals) {
+        fs.writeFileSync(path.join(runDir, "skill-proposals.json"), redactSecret(JSON.stringify(proposals, null, 2)));
+        logger.warn(
+            `Skill drift: ${proposals.proposals.length} proposal(s) → skill-proposals.json (baseline may be out of date; no skills/ changes).`,
+        );
+    }
 
     return { manifest, runDir, blocked: session.blocked };
 }
