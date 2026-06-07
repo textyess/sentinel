@@ -4,6 +4,7 @@ import { ArrowLeftIcon, ExternalLinkIcon, FilmIcon, GitPullRequestIcon, ShieldCh
 import Link from "next/link";
 import { EyeMark } from "@/components/brand/eye-mark";
 import { RunSteps } from "@/components/runs/run-steps";
+import { VideoPlayer } from "@/components/runs/video-player";
 import { StatusBadge } from "@/components/status-badge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -113,13 +114,7 @@ function Hero({ m }: { m: RunManifestView }) {
         <div className="grid gap-6 lg:grid-cols-5">
             <div className="overflow-hidden rounded-xl border bg-[oklch(0.12_0.004_286)] lg:col-span-3">
                 {m.videoUrl ? (
-                    <video
-                        controls
-                        preload="metadata"
-                        src={m.videoUrl}
-                        aria-label={`Recording for ${m.title || `PR #${m.pr}`}`}
-                        className="aspect-video w-full object-contain"
-                    />
+                    <VideoPlayer src={m.videoUrl} results={m.results} label={m.title || `PR #${m.pr}`} />
                 ) : (
                     <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 text-muted-foreground">
                         <FilmIcon className="size-6 opacity-60" />

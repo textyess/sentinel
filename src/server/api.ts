@@ -252,6 +252,9 @@ function toStepResultView(runId: string, r: StepResult): StepResultView {
         screenshotUrl: r.screenshot ? screenshotUrl(runId, r.screenshot) : null,
         consoleErrors: r.consoleErrors,
         networkErrors: r.networkErrors,
+        // Older manifests predate timeline tracking — surface null so the player falls back gracefully.
+        startMs: r.startMs ?? null,
+        endMs: r.endMs ?? null,
     };
 }
 
