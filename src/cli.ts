@@ -1,5 +1,16 @@
 import { Command } from "commander";
-import { runCrawl, runGuard, runLogin, runPr, runSiteMap, runSmoke, runVerify } from "./commands";
+import {
+    runCrawl,
+    runGuard,
+    runLogin,
+    runPr,
+    runSiteMap,
+    runSkills,
+    runSkillsExport,
+    runSkillsImport,
+    runSmoke,
+    runVerify,
+} from "./commands";
 import { logger } from "./core/logger";
 import { SENTINEL } from "./persona";
 
@@ -52,6 +63,24 @@ program
     .command("sitemap")
     .description("Phase 1: synthesize a human-readable site map from the latest interaction graph.")
     .action(wrap(runSiteMap));
+
+const skills = program
+    .command("skills")
+    .description("Phase 1: project the latest interaction graph into a loadable navigation skill pack.")
+    .action(wrap(runSkills));
+
+skills
+    .command("export [outDir]")
+    .description("Export a portable copy of the skill pack (selectors stripped, safety note rewritten).")
+    .action((outDir: string | undefined) => wrap(() => runSkillsExport(outDir ?? null))());
+
+skills
+    .command("import <dir>")
+    .description("Import a navigation skill pack (descriptive only — scripts and tool grants are not imported).")
+    .option("--overwrite", "overwrite skills that already exist")
+    .action((dir: string, opts: { overwrite?: boolean }) =>
+        wrap(() => runSkillsImport(dir, Boolean(opts.overwrite)))(),
+    );
 
 program
     .command("pr")

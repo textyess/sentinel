@@ -11,6 +11,7 @@
     "smoke": "tsx src/cli.ts smoke",
     "crawl": "tsx src/cli.ts crawl",
     "sitemap": "tsx src/cli.ts sitemap",
+    "skills": "tsx src/cli.ts skills",
     "pr": "tsx src/cli.ts pr",
     "verify": "tsx src/cli.ts verify",
     "dev": "next dev -p ${SENTINEL_UI_PORT:-4317} -H 127.0.0.1",

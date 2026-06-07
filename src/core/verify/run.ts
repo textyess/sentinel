@@ -13,6 +13,7 @@ import { getChangedFiles, getPrDiff, getPrMeta, type PrMeta } from "../pr/github
 import type { Reasoner } from "../reasoner/types";
 import { runProductionPreflight } from "../safety/production-guard";
 import { redactSecret } from "../safety/redact";
+import { loadSkillsForRoutes } from "../skills/load";
 import type { BlockedRequest, RepoAdapter } from "../types";
 import { executePlan, judgeVerdict } from "./execute";
 import { navigateLikeUser, toTargetPath } from "./navigate";
@@ -90,6 +91,8 @@ export interface PlanResult {
     graph: InteractionGraph;
     plan: TestPlan;
     runDir: string;
+    /** Navigation skills (slugs) that informed the plan; empty when no skill pack exists. */
+    skillsUsed: string[];
 }
 
 /**
@@ -113,11 +116,27 @@ export async function planForProject(args: PlanArgs): Promise<PlanResult> {
     }
     const graph = loadGraph(graphFile);
 
+    // Pull in the distilled navigation skills for the affected area(s) — an optional
+    // enrichment on top of the raw graph map. Absent until `sentinel skills` has run.
+    const skills = loadSkillsForRoutes(outputDir, adapter.id, routes);
+    if (skills) {
+        logger.info(`Navigation skills: ${skills.slugs.join(", ")}`);
+    } else {
+        logger.info("No skill pack found — planning from the graph only (run `sentinel skills` to add one).");
+    }
+
     logger.info(`Planning with ${reasoner.modelLabel} ...`);
     const diff = await getPrDiff(prNumber, 6000, repoArg);
     const plan = await generatePlan(
         reasoner,
-        { title: meta.title, body: meta.body, changedFiles, affectedRoutes: routes, diffExcerpt: diff },
+        {
+            title: meta.title,
+            body: meta.body,
+            changedFiles,
+            affectedRoutes: routes,
+            diffExcerpt: diff,
+            skills: skills?.text,
+        },
         graph,
     );
     logPlan(plan);
@@ -126,7 +145,7 @@ export async function planForProject(args: PlanArgs): Promise<PlanResult> {
     fs.mkdirSync(runDir, { recursive: true });
     fs.writeFileSync(path.join(runDir, "plan.json"), JSON.stringify(plan, null, 2));
 
-    return { meta, changedFiles, routes, graph, plan, runDir };
+    return { meta, changedFiles, routes, graph, plan, runDir, skillsUsed: skills?.slugs ?? [] };
 }
 
 export interface RunVerifyArgs extends PlanArgs {
@@ -160,7 +179,7 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
         throw new Error(`No login configured for ${adapter.displayName} — set the project's credential env vars.`);
     }
 
-    const { meta, changedFiles, routes, graph, plan, runDir } = await planForProject(args);
+    const { meta, changedFiles, routes, graph, plan, runDir, skillsUsed } = await planForProject(args);
 
     logger.info(`Target: ${targetUrl}`);
     // The adapter is already scoped to targetUrl, so the preflight checks the real target.
@@ -236,6 +255,7 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
         targetUrl,
         changedFiles,
         affectedRoutes: routes,
+        skillsUsed,
         readOnly: preflight.effectiveReadOnly,
         blockedWrites: session.blocked.filter((b) => b.reason === "mutation").length,
         model: reasoner.modelLabel,

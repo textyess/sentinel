@@ -48,6 +48,8 @@ export interface VerifyManifest {
     targetUrl: string;
     changedFiles: string[];
     affectedRoutes: string[];
+    /** Navigation skills (slugs) that informed the plan; empty when no skill pack existed. */
+    skillsUsed: string[];
     /** True when the run never wrote (read-only enforced). */
     readOnly: boolean;
     blockedWrites: number;
