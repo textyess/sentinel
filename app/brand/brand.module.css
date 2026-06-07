@@ -1,0 +1,352 @@
+/*
+ * Sentinel brand sheet — a self-contained editorial document, light only.
+ * It deliberately steps outside the app's theme tokens: serif body, mono
+ * labels, a hand-drawn (Shantell Sans) wordmark, on paper. The palette lives
+ * in custom properties scoped to `.page` so it never leaks into the product UI.
+ * Class selectors are CSS-module-hashed; the few element rules are nested under
+ * `.page` so they stay local. Module rules are unlayered, so they win over
+ * Tailwind's layered base/utilities (including `text-foreground` on the mark).
+ */
+
+.page {
+    --ink: #111;
+    --ink-soft: #444;
+    --ink-faint: #777;
+    --paper: #fdfdfb;
+    --paper-deep: #f6f4ee;
+    --rule: #e5e3dd;
+    --link: #1c4ed8;
+    --link-hover: #0f2c8c;
+    --highlight: #ffe98a;
+    --dark: #141414;
+    --cream: #f3f1ea;
+    --serif: "Iowan Old Style", "Charter", "Cambria", "Georgia", ui-serif, serif;
+    --mono: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace;
+    --hand: var(--font-shantell), ui-rounded, system-ui, sans-serif;
+
+    min-height: 100dvh;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "kern", "liga", "onum";
+}
+
+.wrap {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 5rem 1.5rem 6rem;
+}
+
+/* The marks render via the shared <EyeMark>, which paints in currentColor. */
+.eyeInk {
+    color: var(--ink);
+}
+
+.eyeCream {
+    color: var(--cream);
+}
+
+.eyebrow {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 1.4rem;
+}
+
+.page h1 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 2.4rem;
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+    margin: 0 0 0.5rem;
+}
+
+.lede {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 1.15rem;
+    color: var(--ink-soft);
+    margin: 0;
+    max-width: 40rem;
+}
+
+.page h2 {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink);
+    font-weight: 600;
+    margin: 0 0 0.2rem;
+}
+
+.h2sub {
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--ink-faint);
+    font-size: 0.95rem;
+    margin: 0 0 1.6rem;
+}
+
+.page section {
+    padding-top: 2.6rem;
+    margin-top: 3rem;
+    border-top: 1px solid var(--rule);
+}
+
+.headRule {
+    border: none;
+    border-top: 1px solid var(--rule);
+    margin: 2.6rem 0 0;
+}
+
+/* wordmark */
+.wm {
+    font-family: var(--hand);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1;
+    color: var(--ink);
+}
+
+.wmDark {
+    color: var(--cream);
+}
+
+/* panels */
+.pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+}
+
+.panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1 / 1;
+    gap: 18px;
+    border: 1px solid var(--rule);
+}
+
+.panelLight {
+    background: var(--paper);
+}
+
+.panelDark {
+    background: var(--dark);
+    border-color: #262626;
+}
+
+.ptag {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+}
+
+.panelDark .ptag {
+    color: #8a8a8a;
+}
+
+.lockrow {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+}
+
+.lockbox {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 30px 32px;
+    border: 1px solid var(--rule);
+    min-height: 150px;
+}
+
+.lockboxDark {
+    background: var(--dark);
+    border-color: #262626;
+}
+
+.lockH {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.lockV {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+}
+
+.cap {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+}
+
+.lockboxDark .cap {
+    color: #8a8a8a;
+}
+
+/* favicon grid */
+.favgrid {
+    display: flex;
+    align-items: flex-end;
+    gap: 30px;
+    flex-wrap: wrap;
+    border: 1px solid var(--rule);
+    padding: 34px 36px;
+    background: var(--paper);
+}
+
+.favgridDark {
+    background: var(--dark);
+    border-color: #262626;
+}
+
+.favcell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.px {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--ink-faint);
+}
+
+.favgridDark .px {
+    color: #8a8a8a;
+}
+
+/* clearspace */
+.clear {
+    position: relative;
+    border: 1px solid var(--rule);
+    background: var(--paper-deep);
+    padding: 48px;
+    display: flex;
+    justify-content: center;
+}
+
+.clearbox {
+    position: relative;
+    outline: 1px dashed #c9c6bd;
+    padding: 34px;
+}
+
+/* dos donts */
+.grid2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+}
+
+.ruleItem {
+    border: 1px solid var(--rule);
+    padding: 20px 22px;
+    background: var(--paper);
+}
+
+.ruleItem .k {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin: 0 0 8px;
+}
+
+.ruleDo .k {
+    color: #1f7a4d;
+}
+
+.ruleDont .k {
+    color: #a23b3b;
+}
+
+.ruleItem p {
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    margin: 0;
+}
+
+/* files */
+.files {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.files li {
+    font-family: var(--mono);
+    font-size: 0.84rem;
+    color: var(--ink);
+    padding: 11px 0;
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.files li:last-child {
+    border-bottom: none;
+}
+
+.desc {
+    color: var(--ink-faint);
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 0.92rem;
+}
+
+.colophon {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+    margin-top: 3rem;
+}
+
+.page code {
+    font-family: var(--mono);
+}
+
+.page a {
+    color: var(--link);
+    text-decoration: underline;
+    text-decoration-thickness: 0.5px;
+    text-underline-offset: 2px;
+}
+
+.page a:hover {
+    color: var(--link-hover);
+}
+
+.page ::selection {
+    background: var(--highlight);
+    color: var(--ink);
+}
+
+@media (max-width: 640px) {
+    .pair,
+    .lockrow,
+    .grid2 {
+        grid-template-columns: 1fr;
+    }
+}
