@@ -197,6 +197,10 @@ export interface StepResultView {
     screenshotUrl: string | null;
     consoleErrors: string[];
     networkErrors: NetworkError[];
+    /** Ms from the recording's start to when this step began — positions its marker on the video timeline. */
+    startMs: number | null;
+    /** Ms from the recording's start to this step's screenshot (its observed end state). */
+    endMs: number | null;
 }
 
 export interface RunManifestView {

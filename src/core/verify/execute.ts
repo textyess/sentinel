@@ -109,6 +109,10 @@ async function executeStep(
     let status: StepResult["status"] = "ok";
     let observation = "";
 
+    // Stamp the step's position on the recording timeline before any work (including the
+    // think-pause), so the report's marker sits where the step visibly begins.
+    const startMs = Date.now() - session.videoStartedAt;
+
     await thinkPause(page, options.pacing);
     try {
         if (step.action === "navigate") {
@@ -217,6 +221,8 @@ async function executeStep(
     } catch {
         // A screenshot failure must not abort the run.
     }
+    // The screenshot is the observed end state, so the timeline window for this step closes here.
+    const endMs = Date.now() - session.videoStartedAt;
 
     const networkErrors = session.network
         .slice(networkBefore)
@@ -224,7 +230,7 @@ async function executeStep(
         .map((e) => ({ url: stripQuery(e.url), status: e.status }));
     const consoleErrors = session.consoleErrors.slice(consoleBefore);
 
-    return { index, step, status, observation, screenshot, consoleErrors, networkErrors };
+    return { index, step, status, observation, screenshot, consoleErrors, networkErrors, startMs, endMs };
 }
 
 export async function executePlan(
