@@ -10,7 +10,7 @@ import { stripQuery } from "../graph/url";
 import { humanDwell, type PacingOptions, thinkPause } from "../human/pacing";
 import { logger } from "../logger";
 import type { Reasoner } from "../reasoner/types";
-import { navigateLikeUser, toTargetPath } from "./navigate";
+import { navigateLikeUser, routesOpenedBy, toTargetPath } from "./navigate";
 import type { PlanStep, StepResult, TestPlan, Verdict } from "./types";
 
 export interface ExecuteOptions {
@@ -150,6 +150,29 @@ async function executeStep(
                 await dismissOverlays(page);
                 status = did ? "ok" : "failed";
                 observation = did ? `${step.action}ed "${control.name}"` : `couldn't ${step.action} "${control.name}"`;
+
+                // A click that missed often means the target is a disclosure — a sidebar
+                // group toggle with no link of its own: clicking it only opens a submenu,
+                // so a lone click can never reach the page the step wants.
+                // If the map shows this control opens onto a route, finish the job the way a
+                // user would: navigate there, which expands the menu and follows the revealed
+                // link (and, failing that, loads the route directly).
+                if (!did && step.action === "click" && !control.href) {
+                    const dest = routesOpenedBy(options.graph, control.role, control.name)[0];
+                    if (dest) {
+                        const outcome = await navigateLikeUser(page, dest, options.graph, {
+                            destructive: options.destructive,
+                            baseUrl: session.baseUrl,
+                            loginPath: options.loginPath,
+                            settleMs: options.settleMs,
+                            navTimeoutMs: options.navTimeoutMs,
+                            clickTimeoutMs: options.clickTimeoutMs,
+                        });
+                        await dismissOverlays(page);
+                        status = outcome.ok ? "ok" : "failed";
+                        observation = `"${control.name}" only opens a submenu — ${outcome.observation}`;
+                    }
+                }
             }
         } else if (step.action === "type" || step.action === "select") {
             const inputs = (
