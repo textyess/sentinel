@@ -188,6 +188,12 @@ function mergeControlsForRoute(graph: InteractionGraph, route: string): ControlR
  * executor sees skills for the same areas the planner did. Ownership comes from
  * pack.json (area slug -> routes) and imported.json (entry slug -> routes); general
  * skills own no page routes (they describe cross-area navigation, not page controls).
+ *
+ * Empty `affected` means the adapter could not map the diff to routes (e.g. a
+ * component-only PR, or no `pagesPrefix` configured). Rather than go inert, select EVERY
+ * skill so the index covers the whole app — the executor then gets selector-first
+ * execution + drift detection for whatever routes the run actually walks, mirroring how
+ * the planner still loads the general skill when there are no affected routes.
  */
 function ownedRoutesBySelectedSkill(
     pack: SkillPackManifest | null,
@@ -196,7 +202,9 @@ function ownedRoutesBySelectedSkill(
 ): Map<string, Set<string>> {
     const bySlug = new Map<string, Set<string>>();
     const select = (slug: string, owns: string[]): void => {
-        if (!owns.some((owned) => affected.some((route) => routesOverlap(owned, route)))) {
+        const selected =
+            affected.length === 0 || owns.some((owned) => affected.some((route) => routesOverlap(owned, route)));
+        if (!selected) {
             return;
         }
         const set = bySlug.get(slug) ?? new Set<string>();
@@ -225,9 +233,11 @@ function ownedRoutesBySelectedSkill(
  * Build a per-route page-skill lookup for the executor: for each affected area, the
  * exact controls (selectors, hrefs, destructive flags) the baseline crawl recorded on
  * each of its routes. The graph supplies the control data verbatim; pack.json /
- * imported.json supply only route -> owning-skill provenance. Returns null when no
- * skill pack exists or none of it covers the affected routes — so this is a pure,
- * additive enrichment that activates only after `sentinel skills` has run.
+ * imported.json supply only route -> owning-skill provenance. When `routes` is empty
+ * (the adapter mapped the diff to nothing) the index covers the WHOLE app instead of
+ * going inert. Returns null only when no skill pack exists, or when nothing the pack
+ * owns has a matching graph node — so this is a pure, additive enrichment that activates
+ * once `sentinel skills` has run.
  */
 export function loadPageSkillIndex(
     outputDir: string,

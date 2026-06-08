@@ -339,3 +339,24 @@ test("selects the whole area when the affected route is a child of an owned rout
         assert.deepEqual(index?.routes, ["/campaigns", "/campaigns/:id"]);
     });
 });
+
+test("with no affected routes, falls back to whole-app coverage instead of going inert", () => {
+    const pack = packOf([
+        { area: "campaigns", slug: "app-campaigns", routes: ["/campaigns"] },
+        { area: "settings", slug: "app-settings", routes: ["/settings"] },
+    ]);
+    const graph = graphOf([
+        node("c1", "/campaigns", [control({ name: "New" })]),
+        node("s1", "/settings", [control({ name: "Save" })]),
+    ]);
+
+    withSkills({ pack }, (outputDir) => {
+        // The #1356 case: the adapter mapped the diff to no routes. The executor should
+        // still get page skills for the whole app rather than null.
+        const index = loadPageSkillIndex(outputDir, ADAPTER, graph, []);
+        assert.ok(index, "empty routes should fall back to whole-app coverage, not null");
+        assert.deepEqual(index.routes, ["/campaigns", "/settings"]);
+        assert.deepEqual(index.slugs, ["app-campaigns", "app-settings"]);
+        assert.equal(index.get("/settings")?.skillSlug, "app-settings");
+    });
+});
