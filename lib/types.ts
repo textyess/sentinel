@@ -111,6 +111,16 @@ export interface RunRecipeInput {
     secretEnv?: string[];
 }
 
+// Proposed by GET-less POST /api/scan-recipe — a clone-free guess at how to start the repo.
+export interface RunRecipeProposal {
+    installCmd: string;
+    runCmd: string;
+    port: number;
+    readyPath: string;
+    secretEnv: string[];
+    notes: string[];
+}
+
 export interface CreateProjectInput {
     repo: string;
     adapterKind: AdapterKind;

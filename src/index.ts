@@ -46,8 +46,8 @@ export type { RunTotals } from "./core/observability/langfuse";
 export { endRun, runTotals, startRun } from "./core/observability/langfuse";
 export type { DetectInput } from "./core/onboard/detect";
 export { detectProjectConfig } from "./core/onboard/detect";
-export type { RepoScanResult } from "./core/onboard/repo-scan";
-export { scanRepo } from "./core/onboard/repo-scan";
+export type { RepoScanResult, RunRecipeProposal } from "./core/onboard/repo-scan";
+export { detectRunRecipe, scanRepo } from "./core/onboard/repo-scan";
 export type { FieldMeta, OnboardConfidence, OnboardProposal } from "./core/onboard/types";
 export type { IssueComment, PrMeta } from "./core/pr/github";
 export {

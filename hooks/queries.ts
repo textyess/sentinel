@@ -102,6 +102,10 @@ export function useTrialBringUp() {
     });
 }
 
+export function useScanRecipe() {
+    return useMutation({ mutationFn: (repo: string) => api.scanRecipe(repo) });
+}
+
 export function useDeleteRun() {
     const qc = useQueryClient();
     return useMutation({

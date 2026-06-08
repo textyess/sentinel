@@ -6,11 +6,13 @@ import type { StepResult, VerifyManifest } from "../index";
 import {
     adapterKinds,
     buildPortablePack,
+    detectRunRecipe,
     isAdapterKind,
     isGhAuthenticated,
     isReservedSecretEnvName,
     llmCredentialIssue,
     loadEnvConfig,
+    type RunRecipeProposal,
 } from "../index";
 import { HttpError } from "./errors";
 import { assertWithin } from "./files";
@@ -329,6 +331,27 @@ export async function triggerTrialBringUp(body: unknown): Promise<{ runId: strin
     }
     const runId = triggerTrialBringUpInBackground(parsed.data);
     return { runId, status: "running" };
+}
+
+const scanRecipeSchema = z.object({
+    repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/, "repo must be owner/name"),
+});
+
+/**
+ * Clone-free scan of a repo to propose a no-preview run recipe (install/start command, port,
+ * secret env names). Read-only and fast (a few contents-API reads), so it returns synchronously
+ * for the registration form to pre-fill. A null recipe means the repo couldn't be read.
+ */
+export async function scanRepoRecipe(body: unknown): Promise<{ recipe: RunRecipeProposal | null; notes: string[] }> {
+    const parsed = scanRecipeSchema.safeParse(body);
+    if (!parsed.success) {
+        throw new HttpError(400, parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+    }
+    const recipe = await detectRunRecipe(parsed.data.repo);
+    return {
+        recipe,
+        notes: recipe?.notes ?? ["Could not read the repository — check that the GitHub CLI is authenticated."],
+    };
 }
 
 /** Adapter kinds the registration form may offer (generic + any registered built-ins). */

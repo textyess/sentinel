@@ -182,6 +182,23 @@ export async function listRepoDir(
 }
 
 /**
+ * Read a single file's contents from a repo via the contents API (no clone). Returns null
+ * on any failure (e.g. a 404 for a missing file), so callers can probe-and-fall-back. The
+ * `raw` Accept header returns the bytes directly rather than base64-wrapped JSON.
+ */
+export async function readRepoFile(repo: string, filePath: string): Promise<string | null> {
+    if (!repo) {
+        return null;
+    }
+    const clean = filePath.replace(/^\/+/, "");
+    try {
+        return await gh(["api", `repos/${repo}/contents/${clean}`, "-H", "Accept: application/vnd.github.raw"]);
+    } catch {
+        return null;
+    }
+}
+
+/**
  * Best-effort resolution of a repo's production (or baseline) web URL from its
  * deployments — the environment whose name includes `envIncludes` and is NOT a PR
  * preview. Returns null when none is found (the human supplies the URL instead).

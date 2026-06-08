@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { useAdapters, useAutodetect, useCreateProject, useTrialBringUp } from "@/hooks/queries";
+import { useAdapters, useAutodetect, useCreateProject, useScanRecipe, useTrialBringUp } from "@/hooks/queries";
 import { useLiveRun } from "@/hooks/use-live-run";
 import { ApiError } from "@/lib/api";
 import type { AdapterKind, AutodetectFieldMeta, CreateProjectInput, RunRecipeInput } from "@/lib/types";
@@ -154,6 +154,8 @@ export function RegisterProjectDialog({
     const trialLive = useLiveRun(trialRunId);
     const trialing = trial.isPending || trialLive.streaming;
     const trialDone = trialLive.done?.kind === "trial" ? trialLive.done : null;
+    const scan = useScanRecipe();
+    const [recipeNotes, setRecipeNotes] = useState<string[]>([]);
     const live = useLiveRun(runId);
     // `runId !== null` keeps the button disabled across the gap between the POST
     // resolving and useLiveRun's effect setting streaming=true (no re-enable flicker).
@@ -172,6 +174,7 @@ export function RegisterProjectDialog({
         setNotes([]);
         setRunId(null);
         setTrialRunId(null);
+        setRecipeNotes([]);
         setConfirmOpen(false);
     }
 
@@ -253,6 +256,33 @@ export function RegisterProjectDialog({
             ...(Object.keys(literalEnv).length > 0 ? { env: literalEnv } : {}),
             ...(secretEnv.length > 0 ? { secretEnv } : {}),
         };
+    }
+
+    async function detectRecipe() {
+        const repo = form.repo.trim();
+        if (!repo) {
+            toast.error("Enter a repository (owner/name) first.");
+            return;
+        }
+        try {
+            const { recipe, notes: scannedNotes } = await scan.mutateAsync(repo);
+            setRecipeNotes(scannedNotes);
+            if (!recipe) {
+                toast.error(scannedNotes[0] ?? "Could not read the repository.");
+                return;
+            }
+            setForm((f) => ({
+                ...f,
+                runInstallCmd: recipe.installCmd,
+                runStartCmd: recipe.runCmd,
+                runPort: String(recipe.port),
+                runReadyPath: recipe.readyPath,
+                runSecretEnv: recipe.secretEnv.join(", "),
+            }));
+            toast.success("Detected a recipe from the repo — review, then Test bring-up.");
+        } catch (err) {
+            toast.error(err instanceof ApiError ? err.message : "Could not scan the repository");
+        }
     }
 
     async function runTrial() {
@@ -452,12 +482,35 @@ export function RegisterProjectDialog({
                             />
                         ) : (
                             <div className="grid gap-4 rounded-lg border border-dashed p-4">
-                                <span className="text-sm font-medium">How to start the app</span>
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <span className="text-sm font-medium">How to start the app</span>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={detectRecipe}
+                                        disabled={scan.isPending}>
+                                        <SparklesIcon />
+                                        {scan.isPending ? "Scanning…" : "Detect from repo"}
+                                    </Button>
+                                </div>
                                 <p className="text-xs text-muted-foreground">
                                     Sentinel runs these from the PR's checked-out branch, then points the browser at the
                                     local port. The app receives only the env you declare here — never Sentinel's own
                                     secrets.
                                 </p>
+                                {recipeNotes.length > 0 && (
+                                    <ul className="grid gap-1 rounded-md border border-uncertain/25 bg-uncertain/10 p-3 text-xs text-foreground">
+                                        {recipeNotes.map((note) => (
+                                            <li key={note} className="flex gap-2">
+                                                <span aria-hidden className="text-uncertain">
+                                                    !
+                                                </span>
+                                                <span>{note}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
                                 <div className="grid gap-4 sm:grid-cols-2">
                                     <Field
                                         label="Install command"
