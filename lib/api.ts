@@ -6,6 +6,7 @@ import type {
     ProjectRecord,
     ProjectView,
     RunManifestView,
+    RunRecipeInput,
     RunSummary,
     TriggerResult,
 } from "./types";
@@ -65,6 +66,8 @@ export const api = {
         }),
     autodetect: (body: { repo: string; baselineUrl: string | null; previewEnvIncludes?: string }) =>
         request<TriggerResult>("/api/autodetect", { method: "POST", body: JSON.stringify(body) }),
+    trialBringUp: (body: { repo: string; runRecipe: RunRecipeInput }) =>
+        request<TriggerResult>("/api/trial-bringup", { method: "POST", body: JSON.stringify(body) }),
 
     runs: () => request<RunSummary[]>("/api/runs"),
     runManifest: (runId: string) => request<RunManifestView>(`/api/runs/${encodeURIComponent(runId)}/manifest`),

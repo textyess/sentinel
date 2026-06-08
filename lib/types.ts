@@ -171,7 +171,8 @@ export type DoneEvent =
     | { kind?: undefined; verdict: Verdict; videoUrl: string | null }
     | { kind: "crawl"; coverage: CrawlCoverage; graphPresent: true }
     | { kind: "skills"; skillCount: number; areas: number }
-    | { kind: "autodetect"; proposal: AutodetectProposal };
+    | { kind: "autodetect"; proposal: AutodetectProposal }
+    | { kind: "trial"; ok: boolean; baseUrl: string | null };
 
 export type RunKind = "verify" | "crawl" | "autodetect" | "skills";
 

@@ -22,10 +22,12 @@ import {
     isCrawlRunning,
     isPrRunning,
     isSkillsRunning,
+    isTrialRunning,
     triggerAutodetectInBackground,
     triggerCrawlInBackground,
     triggerRunInBackground,
     triggerSkillsInBackground,
+    triggerTrialBringUpInBackground,
 } from "./runner";
 import { getProject, listProjects, listRunRecords, removeProject, removeRunRecord, upsertProject } from "./store";
 import { tarGzip } from "./targz";
@@ -304,6 +306,28 @@ export async function triggerAutodetect(body: unknown): Promise<{ runId: string;
         throw new HttpError(409, `Auto-detect for ${repo} is already in progress.`);
     }
     const runId = triggerAutodetectInBackground({ repo, baselineUrl: baselineUrl ?? null, previewEnvIncludes });
+    return { runId, status: "running" };
+}
+
+const trialBringUpSchema = z.object({
+    repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/, "repo must be owner/name"),
+    runRecipe: runRecipeSchema,
+});
+
+/**
+ * "Prove it" check for a (possibly unregistered) repo: clone the default branch, run the
+ * recipe, confirm the app answers HTTP, tear down. Returns a runId so the client can stream
+ * progress and read the pass/fail from the SSE `done` event before registering.
+ */
+export async function triggerTrialBringUp(body: unknown): Promise<{ runId: string; status: string }> {
+    const parsed = trialBringUpSchema.safeParse(body);
+    if (!parsed.success) {
+        throw new HttpError(400, parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+    }
+    if (isTrialRunning(parsed.data.repo)) {
+        throw new HttpError(409, `A trial bring-up for ${parsed.data.repo} is already in progress.`);
+    }
+    const runId = triggerTrialBringUpInBackground(parsed.data);
     return { runId, status: "running" };
 }
 

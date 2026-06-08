@@ -150,6 +150,12 @@ export function publishAutodetectDone(runId: string, proposal: AutodetectProposa
     releaseSink(runId);
 }
 
+/** Terminal event for a trial bring-up — whether the app started and the local URL it reached. */
+export function publishTrialDone(runId: string, payload: { ok: boolean; baseUrl: string | null }): void {
+    emit(runId, `event: done\ndata: ${JSON.stringify({ kind: "trial", ...payload })}\n\n`);
+    releaseSink(runId);
+}
+
 /** Terminal event for a skill-pack generation — counts only, never a verdict or secret. */
 export function publishSkillsDone(runId: string, payload: { skillCount: number; areas: number }): void {
     emit(runId, `event: done\ndata: ${JSON.stringify({ kind: "skills", ...payload })}\n\n`);

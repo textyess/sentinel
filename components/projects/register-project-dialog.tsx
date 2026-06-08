@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { useAdapters, useAutodetect, useCreateProject } from "@/hooks/queries";
+import { useAdapters, useAutodetect, useCreateProject, useTrialBringUp } from "@/hooks/queries";
 import { useLiveRun } from "@/hooks/use-live-run";
 import { ApiError } from "@/lib/api";
 import type { AdapterKind, AutodetectFieldMeta, CreateProjectInput, RunRecipeInput } from "@/lib/types";
@@ -143,12 +143,17 @@ export function RegisterProjectDialog({
     const [meta, setMeta] = useState<Record<string, AutodetectFieldMeta>>({});
     const [notes, setNotes] = useState<string[]>([]);
     const [runId, setRunId] = useState<string | null>(null);
+    const [trialRunId, setTrialRunId] = useState<string | null>(null);
     const [confirmOpen, setConfirmOpen] = useState(false);
 
     const { data: adapters } = useAdapters(open);
     const kinds = adapters?.kinds ?? ["generic"];
     const create = useCreateProject();
     const detect = useAutodetect();
+    const trial = useTrialBringUp();
+    const trialLive = useLiveRun(trialRunId);
+    const trialing = trial.isPending || trialLive.streaming;
+    const trialDone = trialLive.done?.kind === "trial" ? trialLive.done : null;
     const live = useLiveRun(runId);
     // `runId !== null` keeps the button disabled across the gap between the POST
     // resolving and useLiveRun's effect setting streaming=true (no re-enable flicker).
@@ -166,6 +171,7 @@ export function RegisterProjectDialog({
         setMeta({});
         setNotes([]);
         setRunId(null);
+        setTrialRunId(null);
         setConfirmOpen(false);
     }
 
@@ -236,21 +242,45 @@ export function RegisterProjectDialog({
         }
     }
 
-    function doSubmit() {
-        const previewEnvIncludes = form.previewEnvIncludes.trim() || "web";
+    function buildRunRecipe(): RunRecipeInput {
         const literalEnv = parseEnvLines(form.runEnv);
         const secretEnv = splitList(form.runSecretEnv);
-        const runRecipe: RunRecipeInput | null =
-            form.hasPreview === "no"
-                ? {
-                      installCmd: form.runInstallCmd.trim() || undefined,
-                      runCmd: form.runStartCmd.trim(),
-                      port: Number.parseInt(form.runPort, 10) || 3000,
-                      readyPath: form.runReadyPath.trim() || undefined,
-                      ...(Object.keys(literalEnv).length > 0 ? { env: literalEnv } : {}),
-                      ...(secretEnv.length > 0 ? { secretEnv } : {}),
-                  }
-                : null;
+        return {
+            installCmd: form.runInstallCmd.trim() || undefined,
+            runCmd: form.runStartCmd.trim(),
+            port: Number.parseInt(form.runPort, 10) || 3000,
+            readyPath: form.runReadyPath.trim() || undefined,
+            ...(Object.keys(literalEnv).length > 0 ? { env: literalEnv } : {}),
+            ...(secretEnv.length > 0 ? { secretEnv } : {}),
+        };
+    }
+
+    async function runTrial() {
+        const repo = form.repo.trim();
+        if (!repo) {
+            toast.error("Enter a repository (owner/name) first.");
+            return;
+        }
+        if (!form.runStartCmd.trim()) {
+            toast.error("Enter the command that starts your app (e.g. npm run dev).");
+            return;
+        }
+        const port = Number.parseInt(form.runPort, 10);
+        if (!Number.isFinite(port) || port <= 0 || port > 65535) {
+            toast.error("Enter a valid port the app listens on (1–65535).");
+            return;
+        }
+        try {
+            const { runId: id } = await trial.mutateAsync({ repo, runRecipe: buildRunRecipe() });
+            setTrialRunId(id);
+        } catch (err) {
+            toast.error(err instanceof ApiError ? err.message : "Could not start the trial bring-up");
+        }
+    }
+
+    function doSubmit() {
+        const previewEnvIncludes = form.previewEnvIncludes.trim() || "web";
+        const runRecipe: RunRecipeInput | null = form.hasPreview === "no" ? buildRunRecipe() : null;
         const body: CreateProjectInput = {
             repo: form.repo.trim(),
             adapterKind,
@@ -481,6 +511,32 @@ export function RegisterProjectDialog({
                                         One KEY=VALUE per line. Safe, non-secret config only.
                                     </p>
                                 </div>
+
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <Button type="button" variant="secondary" onClick={runTrial} disabled={trialing}>
+                                        <SparklesIcon />
+                                        {trialing ? "Starting…" : "Test bring-up"}
+                                    </Button>
+                                    <span className="text-xs text-muted-foreground">
+                                        Sentinel clones the default branch, runs this recipe, and checks the app answers
+                                        — proving it before you register.
+                                    </span>
+                                </div>
+                                {trialRunId && (trialLive.streaming || trialLive.lines.length > 0) && (
+                                    <div className="h-40">
+                                        <RunLog lines={trialLive.lines} streaming={trialLive.streaming} />
+                                    </div>
+                                )}
+                                {trialDone && (
+                                    <p className={cn("text-xs font-medium", trialDone.ok ? "text-pass" : "text-fail")}>
+                                        {trialDone.ok
+                                            ? `✓ Started and reachable at ${trialDone.baseUrl}`
+                                            : "✗ Bring-up failed — see the log above."}
+                                    </p>
+                                )}
+                                {trialLive.error && (
+                                    <p className="text-xs font-medium text-fail">✗ {trialLive.error}</p>
+                                )}
                             </div>
                         )}
 

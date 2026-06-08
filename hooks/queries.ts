@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import type { CreateProjectInput } from "@/lib/types";
+import type { CreateProjectInput, RunRecipeInput } from "@/lib/types";
 
 export const keys = {
     health: ["health"] as const,
@@ -93,6 +93,12 @@ export function useAutodetect() {
     return useMutation({
         mutationFn: (body: { repo: string; baselineUrl: string | null; previewEnvIncludes?: string }) =>
             api.autodetect(body),
+    });
+}
+
+export function useTrialBringUp() {
+    return useMutation({
+        mutationFn: (body: { repo: string; runRecipe: RunRecipeInput }) => api.trialBringUp(body),
     });
 }
 

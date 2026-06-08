@@ -39,6 +39,7 @@ import {
     publishDone,
     publishError,
     publishSkillsDone,
+    publishTrialDone,
 } from "./sse";
 import { upsertRunRecord } from "./store";
 import type { AutodetectProposal, ProjectRecord, RunRecord, RunStatus } from "./types";
@@ -657,6 +658,91 @@ export function triggerSkillsInBackground(project: ProjectRecord): string {
     primeStream(runId);
     void generateSkillsProject(project, { runId }).catch((error) => {
         logger.warn(`Skills ${runId} crashed: ${msg(error)}`);
+    });
+    return runId;
+}
+
+/** Per-repo guard so one repo isn't trial-brought-up twice at once. Keyed by "owner/name". */
+const trialInFlight = singleton("runner.trialInFlight", () => new Set<string>());
+export function isTrialRunning(repo: string): boolean {
+    return trialInFlight.has(repo);
+}
+
+export interface TrialBringUpInput {
+    repo: string;
+    runRecipe: PersistedRunRecipe;
+    runId?: string;
+}
+
+/**
+ * "Prove it" onboarding check: clone the default branch, run the recipe, and confirm the
+ * app answers HTTP — then tear it all down. No LLM, no baseline, no credentials; it only
+ * answers "can Sentinel actually start this app?" so a no-preview project can validate its
+ * recipe before the first PR. Streams progress and shares the global run slot + read-only
+ * isolation (the spawned child never receives Sentinel's own secrets).
+ */
+export async function trialBringUp(input: TrialBringUpInput): Promise<{ runId: string; status: RunStatus }> {
+    const env = loadEnvConfig();
+    const config = loadServerConfig();
+    const runId = input.runId ?? `${slug(input.repo)}__trial-${stamp()}`;
+    const flightKey = input.repo;
+
+    if (trialInFlight.has(flightKey)) {
+        return { runId, status: "blocked" };
+    }
+    trialInFlight.add(flightKey);
+
+    try {
+        const resolved = resolvePersistedRecipe(input.runRecipe);
+        if (resolved.rejectedSecrets.length > 0) {
+            publishError(
+                runId,
+                `The run recipe references env vars reserved for Sentinel's own credentials: ${resolved.rejectedSecrets.join(", ")}. Remove them.`,
+            );
+            return { runId, status: "errored" };
+        }
+        if (resolved.missingSecrets.length > 0) {
+            publishError(
+                runId,
+                `The run recipe declares secrets that aren't set: ${resolved.missingSecrets.join(", ")}. Add them in Settings and try again.`,
+            );
+            return { runId, status: "blocked" };
+        }
+
+        await acquireSlot(config.maxConcurrent);
+        let teardownLocal: () => Promise<void> = async () => {};
+        try {
+            const baseUrl = await runWithProgress(runId, async () => {
+                const checkoutRoot = path.join(env.outputDir, slug(input.repo), "checkouts");
+                const checkout = await checkoutRepo(input.repo, checkoutRoot);
+                teardownLocal = () => checkout.cleanup();
+                const app = await launchLocalApp(resolved.recipe, { cwd: checkout.dir });
+                teardownLocal = async () => {
+                    await app.stop();
+                    await checkout.cleanup();
+                };
+                logger.success(`Bring-up succeeded — ${input.repo} is reachable at ${app.baseUrl}.`);
+                return app.baseUrl;
+            });
+            publishTrialDone(runId, { ok: true, baseUrl });
+            return { runId, status: "passed" };
+        } catch (error) {
+            publishError(runId, `Bring-up failed: ${msg(error)}`);
+            return { runId, status: "errored" };
+        } finally {
+            await teardownLocal().catch((error) => logger.warn(`Local teardown failed: ${msg(error)}`));
+            releaseSlot();
+        }
+    } finally {
+        trialInFlight.delete(flightKey);
+    }
+}
+
+export function triggerTrialBringUpInBackground(input: Omit<TrialBringUpInput, "runId">): string {
+    const runId = `${slug(input.repo)}__trial-${stamp()}`;
+    primeStream(runId);
+    void trialBringUp({ ...input, runId }).catch((error) => {
+        logger.warn(`Trial bring-up ${runId} crashed: ${msg(error)}`);
     });
     return runId;
 }
