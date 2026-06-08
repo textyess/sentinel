@@ -19,7 +19,7 @@ import { Separator } from "@/components/ui/separator";
 import { useAdapters, useAutodetect, useCreateProject } from "@/hooks/queries";
 import { useLiveRun } from "@/hooks/use-live-run";
 import { ApiError } from "@/lib/api";
-import type { AdapterKind, AutodetectFieldMeta, CreateProjectInput } from "@/lib/types";
+import type { AdapterKind, AutodetectFieldMeta, CreateProjectInput, RunRecipeInput } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const DEFAULTS = {
@@ -37,6 +37,14 @@ const DEFAULTS = {
     pagesPrefix: "",
     publicRoutes: "/login",
     allowedMutationPatterns: "^/login$",
+    // "yes" → read the PR preview URL from GitHub; "no" → Sentinel starts the app itself.
+    hasPreview: "yes",
+    runInstallCmd: "npm install",
+    runStartCmd: "npm run dev",
+    runPort: "3000",
+    runReadyPath: "/",
+    runSecretEnv: "",
+    runEnv: "",
 };
 
 type FormState = typeof DEFAULTS;
@@ -46,6 +54,23 @@ function splitList(value: string): string[] {
         .split(/[,\n]/)
         .map((v) => v.trim())
         .filter(Boolean);
+}
+
+/** Parse a textarea of `KEY=VALUE` lines into a record (blank lines and `#` comments ignored). */
+function parseEnvLines(value: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const line of value.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) {
+            continue;
+        }
+        const eq = trimmed.indexOf("=");
+        if (eq <= 0) {
+            continue;
+        }
+        out[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1).trim();
+    }
+    return out;
 }
 
 /** The Sentinel-side env var that will hold this repo's test login (mirrors the server). */
@@ -213,12 +238,26 @@ export function RegisterProjectDialog({
 
     function doSubmit() {
         const previewEnvIncludes = form.previewEnvIncludes.trim() || "web";
+        const literalEnv = parseEnvLines(form.runEnv);
+        const secretEnv = splitList(form.runSecretEnv);
+        const runRecipe: RunRecipeInput | null =
+            form.hasPreview === "no"
+                ? {
+                      installCmd: form.runInstallCmd.trim() || undefined,
+                      runCmd: form.runStartCmd.trim(),
+                      port: Number.parseInt(form.runPort, 10) || 3000,
+                      readyPath: form.runReadyPath.trim() || undefined,
+                      ...(Object.keys(literalEnv).length > 0 ? { env: literalEnv } : {}),
+                      ...(secretEnv.length > 0 ? { secretEnv } : {}),
+                  }
+                : null;
         const body: CreateProjectInput = {
             repo: form.repo.trim(),
             adapterKind,
             previewEnvIncludes,
             mentionHandle: form.mentionHandle.trim() || "@sentinel",
             baselineUrl: form.baselineUrl.trim() || null,
+            runRecipe,
             adapter:
                 adapterKind === "generic"
                     ? {
@@ -263,6 +302,18 @@ export function RegisterProjectDialog({
         if (!form.repo.trim()) {
             toast.error("Enter a repository (owner/name).");
             return;
+        }
+        // No-preview projects must declare how to start the app.
+        if (form.hasPreview === "no") {
+            if (!form.runStartCmd.trim()) {
+                toast.error("Enter the command that starts your app (e.g. npm run dev).");
+                return;
+            }
+            const port = Number.parseInt(form.runPort, 10);
+            if (!Number.isFinite(port) || port <= 0 || port > 65535) {
+                toast.error("Enter a valid port the app listens on (1–65535).");
+                return;
+            }
         }
         // A public (no-login) project has no write allow-list to validate or confirm.
         if (adapterKind === "generic" && !noAuth) {
@@ -334,12 +385,25 @@ export function RegisterProjectDialog({
                         </div>
 
                         <div className="grid gap-4 sm:grid-cols-2">
-                            <Field
-                                label="Preview env contains"
-                                name="previewEnvIncludes"
-                                value={form.previewEnvIncludes}
-                                onChange={update("previewEnvIncludes")}
-                            />
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="hasPreview">Preview environment</Label>
+                                <Select
+                                    value={form.hasPreview}
+                                    onValueChange={(v) => setForm((f) => ({ ...f, hasPreview: v }))}>
+                                    <SelectTrigger id="hasPreview">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="yes">PR deploys a preview</SelectItem>
+                                        <SelectItem value="no">No preview — start it for me</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    {form.hasPreview === "yes"
+                                        ? "Sentinel reads the PR's preview URL from GitHub."
+                                        : "Sentinel checks out the PR branch and runs the app itself."}
+                                </p>
+                            </div>
                             <Field
                                 label="Mention handle"
                                 name="mentionHandle"
@@ -347,6 +411,78 @@ export function RegisterProjectDialog({
                                 onChange={update("mentionHandle")}
                             />
                         </div>
+
+                        {form.hasPreview === "yes" ? (
+                            <Field
+                                label="Preview env contains"
+                                name="previewEnvIncludes"
+                                hint="substring of the preview deployment's environment name (e.g. web)"
+                                value={form.previewEnvIncludes}
+                                onChange={update("previewEnvIncludes")}
+                            />
+                        ) : (
+                            <div className="grid gap-4 rounded-lg border border-dashed p-4">
+                                <span className="text-sm font-medium">How to start the app</span>
+                                <p className="text-xs text-muted-foreground">
+                                    Sentinel runs these from the PR's checked-out branch, then points the browser at the
+                                    local port. The app receives only the env you declare here — never Sentinel's own
+                                    secrets.
+                                </p>
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <Field
+                                        label="Install command"
+                                        name="runInstallCmd"
+                                        placeholder="npm install"
+                                        value={form.runInstallCmd}
+                                        onChange={update("runInstallCmd")}
+                                    />
+                                    <Field
+                                        label="Start command"
+                                        name="runStartCmd"
+                                        placeholder="npm run dev"
+                                        value={form.runStartCmd}
+                                        onChange={update("runStartCmd")}
+                                    />
+                                    <Field
+                                        label="Port"
+                                        name="runPort"
+                                        inputMode="numeric"
+                                        placeholder="3000"
+                                        value={form.runPort}
+                                        onChange={update("runPort")}
+                                    />
+                                    <Field
+                                        label="Ready path"
+                                        name="runReadyPath"
+                                        placeholder="/"
+                                        value={form.runReadyPath}
+                                        onChange={update("runReadyPath")}
+                                    />
+                                </div>
+                                <Field
+                                    label="Secret env vars"
+                                    name="runSecretEnv"
+                                    hint="comma-separated NAMES — values come from Settings, never stored here"
+                                    value={form.runSecretEnv}
+                                    onChange={update("runSecretEnv")}
+                                />
+                                <div className="grid gap-1.5">
+                                    <Label htmlFor="runEnv">Non-secret env</Label>
+                                    <textarea
+                                        id="runEnv"
+                                        name="runEnv"
+                                        rows={3}
+                                        className="rounded-md border bg-transparent px-3 py-2 font-mono text-xs"
+                                        placeholder={"NEXT_PUBLIC_API_URL=https://staging.api\nFEATURE_FLAG=on"}
+                                        value={form.runEnv}
+                                        onChange={(e) => setForm((f) => ({ ...f, runEnv: e.target.value }))}
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        One KEY=VALUE per line. Safe, non-secret config only.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
 
                         <div className="grid gap-1.5">
                             <Label htmlFor="baselineUrl">Baseline URL</Label>

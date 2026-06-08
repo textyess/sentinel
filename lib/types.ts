@@ -97,6 +97,20 @@ export interface GenericAdapterInput {
     allowedMutationPatterns: string[];
 }
 
+// How to start the app locally for repos with no PR preview deployment. Secrets are
+// referenced by env-var NAME (resolved from Sentinel's managed env at launch), never
+// stored raw — mirroring the credential env-var convention.
+export interface RunRecipeInput {
+    installCmd?: string;
+    runCmd: string;
+    port: number;
+    readyPath?: string;
+    /** Non-secret env literals (e.g. NEXT_PUBLIC_API_URL). */
+    env?: Record<string, string>;
+    /** Names of Sentinel-managed env vars injected at launch (secrets). */
+    secretEnv?: string[];
+}
+
 export interface CreateProjectInput {
     repo: string;
     adapterKind: AdapterKind;
@@ -104,6 +118,8 @@ export interface CreateProjectInput {
     mentionHandle: string;
     baselineUrl: string | null;
     adapter: GenericAdapterInput | null;
+    /** Present when the project has no preview env and Sentinel must start it itself. */
+    runRecipe?: RunRecipeInput | null;
 }
 
 // ---- SSE live-run events ----------------------------------------------------
