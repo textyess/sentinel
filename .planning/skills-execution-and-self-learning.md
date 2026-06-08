@@ -203,9 +203,11 @@ to the file) to minimize tangling with that WIP.
   healed selector), clone it or treat the array as readonly first.
 - **`loadPageSkillIndex` never filters destructive controls** — it surfaces the `destructive`
   flag so the executor's existing destructive-block guard stays the single enforcement point.
-- **`null` when no skill pack/imported index selects for the affected routes**, mirroring
-  `loadSkillsForRoutes`'s null contract → Feature 1 is a pure enrichment that activates only
-  after `sentinel skills` has run.
+- **`null` only when no skill pack exists or nothing it owns has a graph node.** When the
+  affected-routes list is **empty** (the adapter mapped the diff to nothing — a component-only
+  PR, or a missing `pagesPrefix`), `loadPageSkillIndex` falls back to **whole-app coverage**
+  rather than going inert, so the executor still gets selector-first + drift detection. With a
+  non-empty list it scopes to the overlapping area(s), mirroring `loadSkillsForRoutes`.
 
 ## Progress log
 
@@ -271,5 +273,17 @@ to the file) to minimize tangling with that WIP.
   (it isn't exported; the gating decisions were extracted into the now-tested pure helpers instead).
   **Feature complete.** Final gate green: 40 tests, `tsc` clean, `npm run lint` clean (143 files), no
   null bytes.
-</content>
+- **2026-06-07** — Diagnosed Langfuse trace `verify-1356` (project `textyess-monorepo`): the plan
+  prompt showed `Affected routes: (none — start at /home)` — the adapter mapped the diff to zero
+  routes because the PR's `apps/web/src/pages/**` files didn't match the project's configured
+  `pagesPrefix`. Consequence: the planner got only the general skill and `loadPageSkillIndex`
+  returned null → the executor ran with **no** page skills. Root cause is project config
+  (`pagesPrefix`), not the skills code. **Improvement made:** `loadPageSkillIndex` now falls back to
+  whole-app coverage when affected routes is empty (+1 test; real-graph repro: empty routes →
+  35 routes / 21 skills, was null). Gate green: 41 tests, `tsc` clean, biome clean. NOTE: this is
+  executor-only and therefore trace-invisible (page-skill loading makes no LLM call); to make a trace
+  visibly carry area skills, fix the project's `pagesPrefix` so the planner gets area-specific guides
+  and routes are scoped. Could not run #1356 from this workspace — the monorepo project/baseline isn't
+  registered locally and the PR lives in a different repo; needs the deployed bot (or a local monorepo
+  crawl) to produce a fresh trace.
 </invoke>
