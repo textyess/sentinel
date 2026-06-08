@@ -12,11 +12,21 @@ interface ProbeResult {
  * "work in prod" this is usually instant (a running dev stack or a deployment);
  * a full local PR bring-up will hang here until the stack is healthy.
  */
-export async function ensureAppReachable(baseUrl: string, timeoutMs = 60000): Promise<void> {
+export async function ensureAppReachable(
+    baseUrl: string,
+    timeoutMs = 60000,
+    shouldAbort?: () => string | null,
+): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     let last: ProbeResult = { reachable: false, status: null, error: "not attempted" };
 
     while (Date.now() < deadline) {
+        // Fail fast when the caller knows waiting is pointless (e.g. a locally-started
+        // app process has already crashed) instead of burning the full timeout.
+        const abort = shouldAbort?.();
+        if (abort) {
+            throw new Error(`App at ${baseUrl} stopped before it became reachable: ${abort}`);
+        }
         last = await probe(baseUrl);
         if (last.reachable) {
             return;

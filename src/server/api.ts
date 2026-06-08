@@ -82,6 +82,20 @@ const genericAdapterSchema = z.object({
     destructiveControlPatterns: z.array(z.string()).optional(),
 });
 
+// How to start the app locally for repos with no PR preview. Secrets are referenced by
+// env-var NAME (resolved from Sentinel's managed env at launch), never stored raw here.
+const envVarName = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "must be a valid env var name");
+const runRecipeSchema = z.object({
+    installCmd: z.string().min(1).optional(),
+    runCmd: z.string().min(1),
+    port: z.number().int().positive().max(65535),
+    readyPath: z.string().optional(),
+    env: z.record(z.string(), z.string()).optional(),
+    secretEnv: z.array(envVarName).optional(),
+    installTimeoutMs: z.number().int().positive().optional(),
+    readyTimeoutMs: z.number().int().positive().optional(),
+});
+
 const projectSchema = z
     .object({
         repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/, "repo must be owner/name"),
@@ -90,6 +104,7 @@ const projectSchema = z
         mentionHandle: z.string().default("@sentinel"),
         baselineUrl: z.string().url().nullable().optional(),
         adapter: genericAdapterSchema.nullable().optional(),
+        runRecipe: runRecipeSchema.nullable().optional(),
     })
     .refine((d) => d.adapterKind !== "generic" || Boolean(d.adapter), {
         message: "generic projects require an adapter config",
@@ -167,13 +182,17 @@ export async function createProject(body: unknown): Promise<ProjectRecord> {
         mentionHandle: d.mentionHandle,
         adapter,
         baselineUrl: d.baselineUrl ?? null,
+        runRecipe: d.runRecipe ?? null,
         createdAt: new Date().toISOString(),
     };
     await upsertProject(record);
     return record;
 }
 
-const updateProjectSchema = z.object({ baselineUrl: z.string().url().nullable().optional() });
+const updateProjectSchema = z.object({
+    baselineUrl: z.string().url().nullable().optional(),
+    runRecipe: runRecipeSchema.nullable().optional(),
+});
 
 export async function updateProject(id: string, body: unknown): Promise<ProjectRecord> {
     const project = await getProject(id);
@@ -189,6 +208,9 @@ export async function updateProject(id: string, body: unknown): Promise<ProjectR
     const updated: ProjectRecord = { ...project };
     if (parsed.data.baselineUrl !== undefined) {
         updated.baselineUrl = parsed.data.baselineUrl;
+    }
+    if (parsed.data.runRecipe !== undefined) {
+        updated.runRecipe = parsed.data.runRecipe;
     }
     await upsertProject(updated);
     return updated;

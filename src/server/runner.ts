@@ -1,8 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { GenericProjectConfig } from "../index";
+import type { GenericProjectConfig, PersistedRunRecipe } from "../index";
 import {
     adapterForProject,
+    checkoutPr,
     createReasoner,
     detectProjectConfig,
     endRun,
@@ -10,11 +11,13 @@ import {
     generateSkillPack,
     getPrMeta,
     isGhAuthenticated,
+    launchLocalApp,
     llmCredentialIssue,
     loadEnvConfig,
     loadGraph,
     logger,
     redactSecret,
+    resolvePersistedRecipe,
     resolveProductionUrl,
     resolveWebPreviewUrl,
     runCrawlForProject,
@@ -190,6 +193,10 @@ export async function runProject(
             );
         }
 
+        // When the PR has no preview deployment but the project declares a run recipe,
+        // Sentinel starts the app itself from the PR branch. The heavy work (checkout,
+        // install, dev server) runs inside the slot below; here we only decide the path.
+        let bringUpRecipe: PersistedRunRecipe | null = null;
         if (!targetUrl) {
             let headSha: string;
             try {
@@ -200,13 +207,21 @@ export async function runProject(
                 return await fail("errored", `Could not read PR #${prNumber}: ${msg(error)}`);
             }
             targetUrl = await resolveWebPreviewUrl(repo, headSha, project.previewEnvIncludes);
-            if (!targetUrl) {
-                return await fail("blocked", `No ready preview deployment found for PR #${prNumber} yet.`);
+            if (targetUrl) {
+                adapter = adapterForProject(project, env, { baseUrl: targetUrl });
+            } else if (project.runRecipe) {
+                bringUpRecipe = project.runRecipe;
+            } else {
+                return await fail(
+                    "blocked",
+                    `No ready preview deployment found for PR #${prNumber} yet, and no run recipe is configured to start it locally.`,
+                );
             }
-            adapter = adapterForProject(project, env, { baseUrl: targetUrl });
         }
 
-        // The server ALWAYS runs read-only, regardless of any adapter/env default.
+        // The server ALWAYS runs read-only, regardless of any adapter/env default. (Also
+        // re-applied after a local bring-up rebuilds the adapter, so a self-hosted target
+        // whose backend points at prod still can't be written to.)
         adapter.safety = { ...adapter.safety, readOnly: true };
 
         const graphFile = path.join(env.outputDir, project.id, "graph", "latest.json");
@@ -219,7 +234,36 @@ export async function runProject(
 
         // Acquire a slot ONLY around the browser run, inside a try/finally that always releases it.
         await acquireSlot(config.maxConcurrent);
+        // Stops a locally-started app + removes its checkout; a no-op for the preview path.
+        let teardownLocal: () => Promise<void> = async () => {};
         try {
+            if (bringUpRecipe) {
+                const checkoutRoot = path.join(env.outputDir, project.id, "checkouts");
+                const checkout = await checkoutPr(repo, prNumber, checkoutRoot);
+                teardownLocal = () => checkout.cleanup();
+                const resolved = resolvePersistedRecipe(bringUpRecipe);
+                if (resolved.missingSecrets.length > 0) {
+                    logger.warn(
+                        `Run recipe references env vars that aren't set: ${resolved.missingSecrets.join(", ")}`,
+                    );
+                }
+                const app = await launchLocalApp(resolved.recipe, { cwd: checkout.dir });
+                teardownLocal = async () => {
+                    await app.stop();
+                    await checkout.cleanup();
+                };
+                targetUrl = app.baseUrl;
+                adapter = adapterForProject(project, env, { baseUrl: targetUrl });
+                adapter.safety = { ...adapter.safety, readOnly: true };
+                logger.info(`Self-hosting ${repo}#${prNumber} at ${targetUrl} (no preview deployment found).`);
+            }
+            if (!targetUrl) {
+                // Unreachable: a preview/opts URL or the local bring-up above always sets it.
+                throw new Error("internal: target URL was not resolved before verify.");
+            }
+            // Capture into a const so the narrowing survives into the runWithProgress closure
+            // (targetUrl is a reassigned `let`, so TS widens it back to string|null otherwise).
+            const verifyTargetUrl = targetUrl;
             const reasoner = createReasoner(env);
             startRun(`verify-${prNumber}`, {
                 pr: prNumber,
@@ -233,7 +277,7 @@ export async function runProject(
                         adapter,
                         repo,
                         prNumber,
-                        targetUrl,
+                        targetUrl: verifyTargetUrl,
                         reasoner,
                         env,
                         outputDir: env.outputDir,
@@ -279,6 +323,8 @@ export async function runProject(
         } catch (error) {
             return await fail("errored", `Run failed: ${msg(error)}`);
         } finally {
+            // Always reap a locally-started app + its checkout, on success or failure.
+            await teardownLocal().catch((error) => logger.warn(`Local teardown failed: ${msg(error)}`));
             releaseSlot();
         }
     } finally {
