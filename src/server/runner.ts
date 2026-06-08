@@ -242,9 +242,21 @@ export async function runProject(
                 const checkout = await checkoutPr(repo, prNumber, checkoutRoot);
                 teardownLocal = () => checkout.cleanup();
                 const resolved = resolvePersistedRecipe(bringUpRecipe);
+                // A name reserved for Sentinel's own credentials must never start the app —
+                // this is a security backstop behind the API validation. (teardownLocal still
+                // fires in the slot's finally, so the checkout is cleaned up.)
+                if (resolved.rejectedSecrets.length > 0) {
+                    return await fail(
+                        "blocked",
+                        `I won't start ${project.displayName} for this PR — its run recipe references env vars reserved for Sentinel's own credentials: ${resolved.rejectedSecrets.join(", ")}. Remove them from the recipe.`,
+                    );
+                }
+                // A declared secret that isn't configured means the app would boot degraded and
+                // the verdict would judge a broken app — surface it as blocked, like missing creds.
                 if (resolved.missingSecrets.length > 0) {
-                    logger.warn(
-                        `Run recipe references env vars that aren't set: ${resolved.missingSecrets.join(", ")}`,
+                    return await fail(
+                        "blocked",
+                        `I can't start ${project.displayName} for this PR — its run recipe declares secrets that aren't set: ${resolved.missingSecrets.join(", ")}. Add them in Settings and re-run.`,
                     );
                 }
                 const app = await launchLocalApp(resolved.recipe, { cwd: checkout.dir });

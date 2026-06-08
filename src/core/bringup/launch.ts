@@ -86,9 +86,16 @@ function runToCompletion(
 ): Promise<void> {
     return new Promise((resolve, reject) => {
         const log = makeLogBuffer();
-        const child = spawn(cmd, { cwd: opts.cwd, env: opts.env, shell: true });
+        // detached so a timeout can SIGKILL the whole group — `npm/pnpm/yarn install` runs as
+        // grandchildren of the shell, and killing only the shell would orphan them downloading
+        // into a worktree we're about to remove.
+        const child = spawn(cmd, { cwd: opts.cwd, env: opts.env, shell: true, detached: true });
         const timer = setTimeout(() => {
-            child.kill("SIGKILL");
+            if (child.pid !== undefined) {
+                killTree(child.pid, "SIGKILL");
+            } else {
+                child.kill("SIGKILL");
+            }
             reject(new Error(`${opts.label} timed out after ${opts.timeoutMs}ms.\n${log.read()}`));
         }, opts.timeoutMs);
         const onData = (data: Buffer): void => {
@@ -138,10 +145,16 @@ function makeStop(child: ChildProcess): () => Promise<void> {
         }
         stopped = true;
         const pid = child.pid;
-        if (pid === undefined || child.exitCode !== null || child.signalCode !== null) {
+        if (pid === undefined) {
             return;
         }
-        const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+        // The leader (shell) may have exited while detached grandchildren still hold the
+        // port, so issue the group kill based on the pid regardless of the leader's own
+        // exit state — killTree swallows ESRCH when the group is genuinely empty.
+        const exited =
+            child.exitCode !== null || child.signalCode !== null
+                ? Promise.resolve()
+                : new Promise<void>((resolve) => child.once("exit", () => resolve()));
         killTree(pid, "SIGTERM");
         const escalate = setTimeout(() => killTree(pid, "SIGKILL"), 5000);
         // Never let teardown hang the run, even if the exit event is missed.

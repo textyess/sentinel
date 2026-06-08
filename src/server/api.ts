@@ -8,6 +8,7 @@ import {
     buildPortablePack,
     isAdapterKind,
     isGhAuthenticated,
+    isReservedSecretEnvName,
     llmCredentialIssue,
     loadEnvConfig,
 } from "../index";
@@ -85,13 +86,19 @@ const genericAdapterSchema = z.object({
 // How to start the app locally for repos with no PR preview. Secrets are referenced by
 // env-var NAME (resolved from Sentinel's managed env at launch), never stored raw here.
 const envVarName = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "must be a valid env var name");
+// A recipe's secretEnv resolves these names out of Sentinel's process.env into the spawned
+// PR app, so it must never reference Sentinel's OWN credentials — reject those at the door.
+const secretEnvName = envVarName.refine(
+    (n) => !isReservedSecretEnvName(n),
+    "must not name a Sentinel secret (SENTINEL_*, AWS_*, GH_TOKEN, GITHUB_TOKEN, ANTHROPIC_API_KEY, OPENAI_API_KEY)",
+);
 const runRecipeSchema = z.object({
     installCmd: z.string().min(1).optional(),
     runCmd: z.string().min(1),
     port: z.number().int().positive().max(65535),
     readyPath: z.string().optional(),
     env: z.record(z.string(), z.string()).optional(),
-    secretEnv: z.array(envVarName).optional(),
+    secretEnv: z.array(secretEnvName).optional(),
     installTimeoutMs: z.number().int().positive().optional(),
     readyTimeoutMs: z.number().int().positive().optional(),
 });

@@ -45,7 +45,13 @@ export async function ensureAppReachable(
 async function probe(baseUrl: string): Promise<ProbeResult> {
     try {
         const response = await fetch(baseUrl, { redirect: "manual" });
-        return { reachable: response.status > 0, status: response.status, error: null };
+        // A returned Response always carries a real status (100-599), so ">0" accepted
+        // everything — including a 500 from a server whose listener is up but whose backing
+        // services are broken (e.g. a self-hosted app missing a declared secret). Require
+        // non-5xx so a half-started stack fails bring-up rather than yielding a verdict against
+        // an error state; 2xx/3xx/4xx (incl. a login redirect or 401) still mean it's serving.
+        // ensureAppReachable keeps retrying, so a transient 5xx during cold-start still recovers.
+        return { reachable: response.status < 500, status: response.status, error: null };
     } catch (error) {
         return { reachable: false, status: null, error: error instanceof Error ? error.message : String(error) };
     }

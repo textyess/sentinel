@@ -58,18 +58,46 @@ export interface ResolvedRecipe {
     recipe: RunRecipe;
     /** Declared secret env names that were missing/empty in the environment. */
     missingSecrets: string[];
+    /** Declared secret env names refused because they name Sentinel's OWN credentials. */
+    rejectedSecrets: string[];
+}
+
+/**
+ * Env-var names a recipe may NEVER reference in {@link PersistedRunRecipe.secretEnv}:
+ * Sentinel's OWN credentials. A PR's install/run scripts are attacker-influenced code, so
+ * resolving these out of Sentinel's process.env and handing them to the child would leak
+ * the GitHub token / LLM / cloud keys and defeat the launch env allowlist. Matched
+ * structurally (the agent's own infra prefixes/names, never a target-repo string), so core
+ * stays repo-agnostic.
+ */
+export function isReservedSecretEnvName(name: string): boolean {
+    const upper = name.toUpperCase();
+    return (
+        upper.startsWith("SENTINEL_") ||
+        upper.startsWith("AWS_") ||
+        upper === "GH_TOKEN" ||
+        upper === "GITHUB_TOKEN" ||
+        upper === "ANTHROPIC_API_KEY" ||
+        upper === "OPENAI_API_KEY"
+    );
 }
 
 /**
  * Resolve a persisted recipe into a launch-ready {@link RunRecipe}: merge the non-secret
- * literals with the looked-up value of each declared secret env var. Missing secrets are
- * REPORTED, not thrown — the caller decides whether a missing var is fatal (so a bring-up
- * can still proceed for an app whose "secret" is genuinely optional).
+ * literals with the looked-up value of each declared secret env var. A name that collides
+ * with one of Sentinel's own credentials is REFUSED (never resolved) — a defense-in-depth
+ * backstop for a recipe persisted before validation or via a non-API path. Missing secrets
+ * are REPORTED, not thrown; the caller decides whether a missing/rejected var is fatal.
  */
 export function resolvePersistedRecipe(persisted: PersistedRunRecipe): ResolvedRecipe {
     const env: Record<string, string> = { ...(persisted.env ?? {}) };
     const missingSecrets: string[] = [];
+    const rejectedSecrets: string[] = [];
     for (const name of persisted.secretEnv ?? []) {
+        if (isReservedSecretEnvName(name)) {
+            rejectedSecrets.push(name);
+            continue;
+        }
         const value = process.env[name];
         if (value === undefined || value === "") {
             missingSecrets.push(name);
@@ -88,5 +116,6 @@ export function resolvePersistedRecipe(persisted: PersistedRunRecipe): ResolvedR
             readyTimeoutMs: persisted.readyTimeoutMs,
         },
         missingSecrets,
+        rejectedSecrets,
     };
 }

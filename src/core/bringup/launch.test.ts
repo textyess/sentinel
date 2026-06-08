@@ -50,3 +50,14 @@ test("fails fast with captured logs when the app crashes before binding", async 
         /bring-up failed/i,
     );
 });
+
+test("treats a server that only returns 5xx as not-ready and fails bring-up", async () => {
+    const port = await freePort();
+    // Binds the port but always answers 500 — a listener up with a broken backend behind it.
+    const SERVER_500 =
+        "node -e \"require('http').createServer((q,s)=>{s.statusCode=500;s.end('x')}).listen(process.env.PORT,'127.0.0.1')\"";
+    await assert.rejects(
+        launchLocalApp({ runCmd: SERVER_500, port, readyTimeoutMs: 6_000 }, { cwd: process.cwd() }),
+        /bring-up failed/i,
+    );
+});

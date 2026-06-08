@@ -13,7 +13,7 @@ export { checkoutPr, createDisposableCheckout, type PrCheckout } from "./core/br
 export type { LaunchedApp, LaunchOptions } from "./core/bringup/launch";
 export { launchLocalApp } from "./core/bringup/launch";
 export type { PersistedRunRecipe, ResolvedRecipe, RunRecipe } from "./core/bringup/recipe";
-export { resolvePersistedRecipe } from "./core/bringup/recipe";
+export { isReservedSecretEnvName, resolvePersistedRecipe } from "./core/bringup/recipe";
 export type { DriverOptions, DriverSession } from "./core/browser/driver";
 export { createSession } from "./core/browser/driver";
 export { clickBySelectors, fillBySelectors } from "./core/browser/interact";
