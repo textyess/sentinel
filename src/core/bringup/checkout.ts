@@ -66,7 +66,13 @@ export async function checkoutPr(repo: string, prNumber: number, root: string): 
     try {
         logger.info(`Checking out ${repo}#${prNumber} into an isolated worktree`);
         await run("gh", ["repo", "clone", repo, dir, "--", "--no-tags", "--depth", "1"], { maxBuffer: MAX_BUFFER });
-        await run("gh", ["pr", "checkout", String(prNumber), "-R", repo], { cwd: dir, maxBuffer: MAX_BUFFER });
+        // --detach: check out the PR head in detached HEAD, never a tracking branch. Bring-up
+        // is read-only and never pushes, and this is the only form that works for a merged PR
+        // whose head branch was deleted (plain `gh pr checkout` fails setting up tracking).
+        await run("gh", ["pr", "checkout", String(prNumber), "-R", repo, "--detach"], {
+            cwd: dir,
+            maxBuffer: MAX_BUFFER,
+        });
         return { dir, cleanup };
     } catch (error) {
         await cleanup();
