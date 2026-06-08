@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getAdapter } from "./adapters";
+import { adapterForProject, getAdapter } from "./adapters";
 import type { LoginResult } from "./core/auth/login";
 import { performLogin } from "./core/auth/login";
 import { ensureAppReachable } from "./core/bringup/app";
@@ -28,10 +28,45 @@ import { importSkillPack } from "./core/skills/import";
 import { type DriftSignal, reconcileSkillPack } from "./core/skills/reconcile";
 import type { BlockedRequest, Credentials, RepoAdapter, SafetyConfig } from "./core/types";
 import { planForProject, runVerifyForProject } from "./core/verify/run";
+import { createProject } from "./server/api";
+import { getProject } from "./server/store";
 
 /** Filesystem-safe timestamp for run directories. */
 function stamp(): string {
     return new Date().toISOString().replace(/[:.]/g, "-");
+}
+
+/**
+ * Resolve the adapter a CLI command should drive. With `--project <slug>` it builds the
+ * adapter for a registered project (the no-code generic path) exactly as the dashboard
+ * does; without it, the standalone built-in adapter. A generic project stores no URL, so
+ * its baseUrl falls back to the project's baselineUrl, then SENTINEL_BASE_URL, unless the
+ * caller passes one (e.g. a specific preview deployment).
+ */
+async function resolveAdapter(
+    projectId: string | undefined,
+    env: ReturnType<typeof loadEnvConfig>,
+    opts?: { baseUrl?: string; requireBaseUrl?: boolean },
+): Promise<RepoAdapter> {
+    if (!projectId) {
+        return getAdapter(opts?.baseUrl ? { baseUrl: opts.baseUrl } : undefined);
+    }
+    const project = await getProject(projectId);
+    if (!project) {
+        throw new Error(
+            `No registered project "${projectId}". Register one first with \`sentinel register --config <file>\`.`,
+        );
+    }
+    const baseUrl = opts?.baseUrl ?? project.baselineUrl ?? env.baseUrl ?? "";
+    // A registered generic project stores no URL; commands that drive a browser need one.
+    // Fail fast with a clear message (the dashboard does the same) instead of letting an
+    // empty target surface later as a confusing "Local target" / unparseable-URL error.
+    if (opts?.requireBaseUrl && !baseUrl) {
+        throw new Error(
+            `No URL to target for project "${projectId}". Set its baselineUrl (re-register with "baselineUrl" in the config) or SENTINEL_BASE_URL.`,
+        );
+    }
+    return adapterForProject(project, env, { baseUrl });
 }
 
 function requireCredentials(adapter: RepoAdapter): Credentials {
@@ -82,20 +117,20 @@ function reportBlocked(blocked: BlockedRequest[]): void {
 }
 
 /** The production / read-only preflight on its own. */
-export async function runGuard(): Promise<void> {
+export async function runGuard(projectId?: string): Promise<void> {
     logger.banner("production / read-only preflight");
     const env = loadEnvConfig();
-    const adapter = getAdapter();
+    const adapter = await resolveAdapter(projectId, env, { requireBaseUrl: true });
     const result = await runProductionPreflight(adapter, env.allowProdWrites);
     logger.info(`Target:           ${adapter.baseUrl}`);
     logger.info(`Read-only active: ${result.effectiveReadOnly ? "yes" : "NO — writes allowed"}`);
 }
 
 /** Log in once and persist the authenticated browser session for reuse. */
-export async function runLogin(): Promise<void> {
+export async function runLogin(projectId?: string): Promise<void> {
     logger.banner("login — capture an authenticated session");
     const env = loadEnvConfig();
-    const adapter = getAdapter();
+    const adapter = await resolveAdapter(projectId, env, { requireBaseUrl: true });
 
     const preflight = await runProductionPreflight(adapter, env.allowProdWrites);
     const credentials = requireCredentials(adapter);
@@ -119,10 +154,10 @@ export async function runLogin(): Promise<void> {
  * Phase 0 smoke: prove the whole safety + drive + auth + record loop end to end.
  * Boot check -> preflight -> log in -> save session -> screenshot -> report.
  */
-export async function runSmoke(): Promise<void> {
+export async function runSmoke(projectId?: string): Promise<void> {
     logger.banner("Phase 0 smoke — boot, log in, screenshot, report");
     const env = loadEnvConfig();
-    const adapter = getAdapter();
+    const adapter = await resolveAdapter(projectId, env, { requireBaseUrl: true });
 
     const preflight = await runProductionPreflight(adapter, env.allowProdWrites);
     const credentials = requireCredentials(adapter);
@@ -178,11 +213,20 @@ export async function runSmoke(): Promise<void> {
  * Phase 1: log in, then autonomously crawl the app into an interaction graph and
  * persist it. Read-only and bounded by maxPages so it always terminates.
  */
-export async function runCrawl(maxPages: number, interact: boolean, actuationsPerPage: number): Promise<void> {
+export async function runCrawl(
+    maxPages: number,
+    interact: boolean,
+    actuationsPerPage: number,
+    projectId?: string,
+): Promise<void> {
     logger.banner(`Phase 1 crawl — mapping the app (max ${maxPages} pages)`);
     const env = loadEnvConfig();
-    const adapter = getAdapter();
-    requireCredentials(adapter);
+    const adapter = await resolveAdapter(projectId, env, { requireBaseUrl: true });
+    // A public (no-login) project has no credentials by design; only require them when the
+    // app actually gates behind a login.
+    if (adapter.authRequired) {
+        requireCredentials(adapter);
+    }
 
     let reasoner: Reasoner | null = null;
     if (interact) {
@@ -215,10 +259,10 @@ export async function runCrawl(maxPages: number, interact: boolean, actuationsPe
  * Phase 1: turn the latest interaction graph into a human-readable Markdown site
  * map via the LLM reasoning layer. Reads the saved graph — no browsing needed.
  */
-export async function runSiteMap(): Promise<void> {
+export async function runSiteMap(projectId?: string): Promise<void> {
     logger.banner("Phase 1 site map — synthesize a readable map from the graph");
     const env = loadEnvConfig();
-    const adapter = getAdapter();
+    const adapter = await resolveAdapter(projectId, env);
 
     const graphFile = path.join(env.outputDir, adapter.id, "graph", "latest.json");
     if (!fs.existsSync(graphFile)) {
@@ -252,10 +296,10 @@ export async function runSiteMap(): Promise<void> {
  * SKILL.md. Reads the saved graph (no browsing). Every skill body is LLM-authored
  * from the observed data and verified against the graph, so the LLM is required.
  */
-export async function runSkills(): Promise<void> {
+export async function runSkills(projectId?: string): Promise<void> {
     logger.banner("Phase 1 skills — author a navigation skill pack from the graph");
     const env = loadEnvConfig();
-    const adapter = getAdapter();
+    const adapter = await resolveAdapter(projectId, env);
 
     const graphFile = path.join(env.outputDir, adapter.id, "graph", "latest.json");
     if (!fs.existsSync(graphFile)) {
@@ -294,11 +338,14 @@ export async function runSkillsPromote(
     proposalsPath: string | null,
     maxPages: number,
     actuationsPerPage: number,
+    projectId?: string,
 ): Promise<void> {
     logger.banner("Phase E skills — reconcile/promote from a fresh baseline crawl");
     const env = loadEnvConfig();
-    const adapter = getAdapter();
-    requireCredentials(adapter);
+    const adapter = await resolveAdapter(projectId, env, { requireBaseUrl: true });
+    if (adapter.authRequired) {
+        requireCredentials(adapter);
+    }
 
     const credentialIssue = llmCredentialIssue(env.llmProvider);
     if (credentialIssue) {
@@ -356,10 +403,10 @@ export async function runSkillsPromote(
  * selector appendix is stripped and the safety note rewritten for a runtime without
  * Sentinel's guards. The per-skill folders drop straight into a `.claude/skills/` dir.
  */
-export async function runSkillsExport(outDir: string | null): Promise<void> {
+export async function runSkillsExport(outDir: string | null, projectId?: string): Promise<void> {
     logger.banner("Phase 1 skills — export a portable skill pack");
     const env = loadEnvConfig();
-    const adapter = getAdapter();
+    const adapter = await resolveAdapter(projectId, env);
     const dest = outDir ?? path.join(env.outputDir, adapter.id, "skills-export");
     const result = exportSkillPack({ outputDir: env.outputDir, adapterId: adapter.id, outDir: dest });
     logger.success(`Exported ${result.skillCount} portable skill(s) -> ${result.dir}`);
@@ -371,10 +418,10 @@ export async function runSkillsExport(outDir: string | null): Promise<void> {
  * Imports are descriptive only — capability frontmatter is dropped and no bundled
  * scripts are copied; the safety guards remain the sole authority regardless.
  */
-export async function runSkillsImport(sourceDir: string, overwrite: boolean): Promise<void> {
+export async function runSkillsImport(sourceDir: string, overwrite: boolean, projectId?: string): Promise<void> {
     logger.banner("Phase 1 skills — import a navigation skill pack");
     const env = loadEnvConfig();
-    const adapter = getAdapter();
+    const adapter = await resolveAdapter(projectId, env);
     const result = importSkillPack({ outputDir: env.outputDir, adapterId: adapter.id, sourceDir, overwrite });
     logger.success(`Imported ${result.installed.length}/${result.total} skill(s) into ${adapter.id}.`);
     if (result.installed.length > 0) {
@@ -405,13 +452,18 @@ function reportCoverage(c: CoverageReport): void {
  * Resolves the preview URL from GitHub, maps the diff to routes, re-walks the
  * matching baseline flows with video + console/network capture + control diffing.
  */
-export async function runPr(prNumber: number, baseUrlOverride: string | null, maxFlows: number): Promise<void> {
+export async function runPr(
+    prNumber: number,
+    baseUrlOverride: string | null,
+    maxFlows: number,
+    projectId?: string,
+): Promise<void> {
     if (prNumber <= 0) {
         throw new Error("Provide a PR number, e.g. `sentinel pr 1356`.");
     }
     logger.banner(`Phase 2 PR replay — #${prNumber}`);
     const env = loadEnvConfig();
-    const adapter = getAdapter();
+    const adapter = await resolveAdapter(projectId, env);
     const credentials = requireCredentials(adapter);
 
     const meta = await getPrMeta(prNumber);
@@ -450,7 +502,10 @@ export async function runPr(prNumber: number, baseUrlOverride: string | null, ma
     logger.info(`Replaying ${flows.length} flow(s) from the baseline graph (${selectionMode}).`);
 
     // Build a target-scoped adapter so the preflight's prod detection runs against the real preview URL.
-    const preflight = await runProductionPreflight(getAdapter({ baseUrl: targetUrl }), env.allowProdWrites);
+    const preflight = await runProductionPreflight(
+        await resolveAdapter(projectId, env, { baseUrl: targetUrl }),
+        env.allowProdWrites,
+    );
     await ensureAppReachable(targetUrl);
 
     const runDir = path.join(env.outputDir, adapter.id, "pr-runs", `${prNumber}-${stamp()}`);
@@ -562,14 +617,19 @@ function reportPrRun(manifest: PrRunManifest, runDir: string): void {
  * Phase 3: plan a browser test that demonstrates a PR's change, run it on the
  * preview (read-only, on camera), then judge whether the PR does what it claims.
  */
-export async function runVerify(prNumber: number, baseUrlOverride: string | null, planOnly: boolean): Promise<void> {
+export async function runVerify(
+    prNumber: number,
+    baseUrlOverride: string | null,
+    planOnly: boolean,
+    projectId?: string,
+): Promise<void> {
     if (prNumber <= 0) {
         throw new Error("Provide a PR number, e.g. `sentinel verify 1356`.");
     }
     logger.banner(`Phase 3 verify — #${prNumber}${planOnly ? " (plan only)" : ""}`);
     const env = loadEnvConfig();
     const repo = await detectRepo();
-    const adapter = getAdapter();
+    const adapter = await resolveAdapter(projectId, env);
     requireCredentials(adapter);
 
     const issue = llmCredentialIssue(env.llmProvider);
@@ -599,7 +659,7 @@ export async function runVerify(prNumber: number, baseUrlOverride: string | null
 
     // A target-scoped adapter so the preflight's prod detection runs against the real target.
     const result = await runVerifyForProject({
-        adapter: getAdapter({ baseUrl: targetUrl }),
+        adapter: await resolveAdapter(projectId, env, { baseUrl: targetUrl }),
         repo,
         prNumber,
         targetUrl,
@@ -642,5 +702,60 @@ async function closeQuietly(close: () => Promise<{ videoPath: string | null }>):
     } catch (error) {
         logger.warn(`teardown: ${error instanceof Error ? error.message : String(error)}`);
         return null;
+    }
+}
+
+/**
+ * Register a project from a JSON config (the same body the dashboard's POST /api/projects
+ * accepts) so the no-code generic path is drivable from the CLI. Reuses the server's
+ * `createProject` verbatim — same Zod validation (regexes must compile, mutation patterns
+ * must be ^-anchored), same id slug, same credential-env-name derivation, same store — so
+ * the CLI can never persist a config the dashboard would reject.
+ */
+export async function runRegister(configPath: string): Promise<void> {
+    logger.banner("register — create a project from a config file");
+    const resolved = path.resolve(configPath);
+    if (!fs.existsSync(resolved)) {
+        throw new Error(`No config file at ${resolved}.`);
+    }
+    let body: unknown;
+    try {
+        body = JSON.parse(fs.readFileSync(resolved, "utf8"));
+    } catch (error) {
+        throw new Error(`${resolved} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const record = await createProject(body);
+    logger.success(`Registered "${record.id}" (${record.repo}, adapter: ${record.adapterKind}).`);
+    if (record.adapter) {
+        if (record.adapter.authRequired ?? true) {
+            logger.info(
+                `Test credentials are read from env vars ${record.adapter.emailEnv} / ${record.adapter.passwordEnv}.`,
+            );
+            logger.info("Set those in .env (never commit secrets), then run a baseline crawl:");
+        } else {
+            logger.info("Public app (no login) — no credentials needed. Run a baseline crawl:");
+        }
+        logger.info(`  sentinel crawl --project ${record.id}`);
+    }
+}
+
+/**
+ * Print the routes a PR's changed files map to for a registered project — the PR-diff
+ * round-trip check. Read-only and browser-free: it only exercises the adapter's
+ * `affectedRoutes` mapping (driven by the project's pagesPrefix).
+ */
+export async function runAffectedRoutes(projectId: string, filesCsv: string): Promise<void> {
+    logger.banner(`affected-routes — ${projectId}`);
+    const env = loadEnvConfig();
+    const adapter = await resolveAdapter(projectId, env);
+    const files = filesCsv
+        .split(",")
+        .map((f) => f.trim())
+        .filter(Boolean);
+    const { routes, notes } = adapter.affectedRoutes(files);
+    logger.info(`${files.length} changed file(s).`);
+    logger.success(`Affected routes: ${routes.join(", ") || "(none — verify would replay a default set)"}`);
+    for (const note of notes) {
+        logger.warn(`  ${note}`);
     }
 }

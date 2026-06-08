@@ -82,6 +82,21 @@ pnpm verify 123  # verify PR #123 against its preview
 
 Artifacts — video, screenshots, the interaction graph, and redacted run manifests — land in `.sentinel/` (gitignored).
 
+## Onboard your app with Claude Code (one command)
+
+Prefer not to wire it up by hand? Install the onboarding skill into your app's repo and let
+Claude Code do it:
+
+```bash
+npx skills add textyess/sentinel --skill sentinel-onboarding
+```
+
+Then, in your app repo, ask Claude Code to "set up Sentinel". The skill inspects your
+framework, login flow, and routes, writes a no-code project config, registers it, runs a
+validated baseline crawl + login check, and confirms a PR diff maps to sensible routes — the
+whole [first-run setup](DEPLOY.md) as one guided flow. It never edits the engine and never
+weakens the read-only safety boundary. See [`.claude/skills/sentinel-onboarding`](.claude/skills/sentinel-onboarding/SKILL.md).
+
 ## Commands
 
 | Command | What it does |
@@ -89,12 +104,14 @@ Artifacts — video, screenshots, the interaction graph, and redacted run manife
 | `pnpm guard` | Run the production preflight; print whether the run is clamped to read-only, and why. |
 | `pnpm login` / `pnpm smoke` | Save an authenticated session / boot → log in → screenshot → report blocked writes. |
 | `pnpm crawl` / `pnpm sitemap` | Build the interaction graph / render it as a Markdown sitemap. |
+| `sentinel register --config <file>` | Register a no-code (generic) project from a JSON config so the CLI can drive it. |
+| `sentinel affected-routes --project <slug> --files <csv>` | Map a PR's changed files to routes — the diff round-trip check. |
 | `pnpm pr <N>` | Replay PR #N's affected flows against its preview, with video. |
 | `pnpm verify <N>` | Plan → execute → judge a read-only test: `pass` / `fail` / `uncertain`. Add `--plan-only` to just print the plan. |
 | `pnpm dev` | The Next.js dashboard (UI + API) on `127.0.0.1:4317`. |
 | `pnpm typecheck` | `tsc --noEmit` — the build / CI gate. |
 
-`crawl`, `pr`, and `verify` take flags (`--max-pages`, `--base-url`, `--max-flows`, …); run any with `--help`.
+`crawl`, `pr`, and `verify` take flags (`--max-pages`, `--base-url`, `--max-flows`, …); run any with `--help`. Every run command — `guard`, `login`, `smoke`, `crawl`, `sitemap`, `skills` (and its subcommands), `pr`, and `verify` — accepts `--project <slug>` to drive a registered no-code project instead of a built-in adapter.
 
 ## Safety
 
