@@ -1,9 +1,11 @@
 import { Command } from "commander";
 import {
+    runAffectedRoutes,
     runCrawl,
     runGuard,
     runLogin,
     runPr,
+    runRegister,
     runSiteMap,
     runSkills,
     runSkillsExport,
@@ -35,14 +37,38 @@ const program = new Command();
 
 program.name("sentinel").description(`${SENTINEL.name} — ${SENTINEL.tagline}`).version("0.0.1");
 
-program.command("guard").description("Run the production / read-only preflight only.").action(wrap(runGuard));
+const PROJECT_OPT = "drive a registered project (the no-code generic path) instead of the built-in adapter";
 
-program.command("login").description("Log in and save an authenticated browser session.").action(wrap(runLogin));
+program
+    .command("guard")
+    .description("Run the production / read-only preflight only.")
+    .option("--project <slug>", PROJECT_OPT)
+    .action((opts: { project?: string }) => wrap(() => runGuard(opts.project))());
+
+program
+    .command("login")
+    .description("Log in and save an authenticated browser session.")
+    .option("--project <slug>", PROJECT_OPT)
+    .action((opts: { project?: string }) => wrap(() => runLogin(opts.project))());
 
 program
     .command("smoke")
     .description("Phase 0: boot -> log in -> screenshot -> report blocked writes.")
-    .action(wrap(runSmoke));
+    .option("--project <slug>", PROJECT_OPT)
+    .action((opts: { project?: string }) => wrap(() => runSmoke(opts.project))());
+
+program
+    .command("register")
+    .description("Register a project from a JSON config so the CLI can drive the no-code generic path.")
+    .requiredOption("--config <path>", "path to the project config JSON (the POST /api/projects body)")
+    .action((opts: { config: string }) => wrap(() => runRegister(opts.config))());
+
+program
+    .command("affected-routes")
+    .description("Print the routes a PR's changed files map to for a registered project (PR-diff round-trip check).")
+    .requiredOption("--project <slug>", "registered project slug")
+    .requiredOption("--files <csv>", "comma-separated changed file paths")
+    .action((opts: { project: string; files: string }) => wrap(() => runAffectedRoutes(opts.project, opts.files))());
 
 program
     .command("crawl")
@@ -50,12 +76,14 @@ program
     .option("--max-pages <n>", "maximum unique page states to map", "40")
     .option("--no-interact", "disable LLM-guided actuation (follow links only)")
     .option("--actuations-per-page <n>", "max controls to actuate per page when interacting", "6")
-    .action((opts: { maxPages: string; interact: boolean; actuationsPerPage: string }) =>
+    .option("--project <slug>", PROJECT_OPT)
+    .action((opts: { maxPages: string; interact: boolean; actuationsPerPage: string; project?: string }) =>
         wrap(() =>
             runCrawl(
                 parsePositiveInt(opts.maxPages, 40),
                 opts.interact !== false,
                 parsePositiveInt(opts.actuationsPerPage, 6),
+                opts.project,
             ),
         )(),
     );
