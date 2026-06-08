@@ -4,6 +4,7 @@ import type { GenericProjectConfig, PersistedRunRecipe } from "../index";
 import {
     adapterForProject,
     checkoutPr,
+    checkoutRepo,
     createReasoner,
     detectProjectConfig,
     endRun,
@@ -430,9 +431,20 @@ export async function crawlProject(
     try {
         await upsertRunRecord(record);
 
-        const baselineUrl = resolveBaselineUrl(project, env);
+        let baselineUrl = resolveBaselineUrl(project, env);
+        // No baseline URL but a run recipe → self-host the default branch for the crawl,
+        // so a no-preview project can build its baseline without an external URL. The heavy
+        // bring-up runs inside the slot below.
+        let bringUpRecipe: PersistedRunRecipe | null = null;
         if (!baselineUrl) {
-            return await fail("blocked", "Set a baseline URL for this project first (the URL Sentinel should crawl).");
+            if (project.runRecipe) {
+                bringUpRecipe = project.runRecipe;
+            } else {
+                return await fail(
+                    "blocked",
+                    "Set a baseline URL for this project first (the URL Sentinel should crawl), or add a run recipe so Sentinel can start it.",
+                );
+            }
         }
 
         let adapter: ReturnType<typeof adapterForProject>;
@@ -448,7 +460,36 @@ export async function crawlProject(
         adapter.safety = { ...adapter.safety, readOnly: true };
 
         await acquireSlot(config.maxConcurrent);
+        // Stops a locally-started app + removes its checkout; a no-op when crawling a URL.
+        let teardownLocal: () => Promise<void> = async () => {};
         try {
+            if (bringUpRecipe) {
+                const checkoutRoot = path.join(env.outputDir, project.id, "checkouts");
+                const checkout = await checkoutRepo(project.repo, checkoutRoot);
+                teardownLocal = () => checkout.cleanup();
+                const resolved = resolvePersistedRecipe(bringUpRecipe);
+                if (resolved.rejectedSecrets.length > 0) {
+                    return await fail(
+                        "blocked",
+                        `I won't start ${project.displayName} — its run recipe references env vars reserved for Sentinel's own credentials: ${resolved.rejectedSecrets.join(", ")}. Remove them from the recipe.`,
+                    );
+                }
+                if (resolved.missingSecrets.length > 0) {
+                    return await fail(
+                        "blocked",
+                        `I can't start ${project.displayName} — its run recipe declares secrets that aren't set: ${resolved.missingSecrets.join(", ")}. Add them in Settings and re-run.`,
+                    );
+                }
+                const app = await launchLocalApp(resolved.recipe, { cwd: checkout.dir });
+                teardownLocal = async () => {
+                    await app.stop();
+                    await checkout.cleanup();
+                };
+                baselineUrl = app.baseUrl;
+                adapter = adapterForProject(project, env, { baseUrl: baselineUrl });
+                adapter.safety = { ...adapter.safety, readOnly: true };
+                logger.info(`Self-hosting ${project.repo} (default branch) at ${baselineUrl} for the baseline crawl.`);
+            }
             const llmIssue = llmCredentialIssue(env.llmProvider);
             // Crawl degrades to link-only without an LLM (not blocked).
             const reasoner = opts.interact === false || llmIssue ? null : createReasoner(env);
@@ -489,6 +530,8 @@ export async function crawlProject(
         } catch (error) {
             return await fail("errored", `Crawl failed: ${msg(error)}`);
         } finally {
+            // Always reap a locally-started app + its checkout, on success or failure.
+            await teardownLocal().catch((error) => logger.warn(`Local teardown failed: ${msg(error)}`));
             releaseSlot();
         }
     } finally {

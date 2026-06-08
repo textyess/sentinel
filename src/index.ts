@@ -9,7 +9,7 @@ export type { BuiltinAdapterFactory } from "./adapters/registry";
 export type { LoginResult } from "./core/auth/login";
 export { performLogin } from "./core/auth/login";
 export { ensureAppReachable } from "./core/bringup/app";
-export { checkoutPr, createDisposableCheckout, type PrCheckout } from "./core/bringup/checkout";
+export { checkoutPr, checkoutRepo, createDisposableCheckout, type PrCheckout } from "./core/bringup/checkout";
 export type { LaunchedApp, LaunchOptions } from "./core/bringup/launch";
 export { launchLocalApp } from "./core/bringup/launch";
 export type { PersistedRunRecipe, ResolvedRecipe, RunRecipe } from "./core/bringup/recipe";

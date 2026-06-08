@@ -83,3 +83,25 @@ export async function checkoutPr(repo: string, prNumber: number, root: string): 
         throw new Error(`Could not check out ${repo}#${prNumber}: ${text}`);
     }
 }
+
+/**
+ * Clone a repo's DEFAULT branch into a fresh, disposable working tree via the GitHub CLI
+ * (authenticated, so private repos work). Used to self-host the app for a no-preview
+ * project's baseline crawl — the counterpart to {@link checkoutPr} for verify. The caller
+ * MUST call {@link PrCheckout.cleanup} when done.
+ */
+export async function checkoutRepo(repo: string, root: string): Promise<PrCheckout> {
+    const { dir, cleanup } = makeDir(root, "base-");
+    try {
+        logger.info(`Cloning ${repo} (default branch) into an isolated worktree`);
+        await run("gh", ["repo", "clone", repo, dir, "--", "--no-tags", "--depth", "1"], { maxBuffer: MAX_BUFFER });
+        return { dir, cleanup };
+    } catch (error) {
+        await cleanup();
+        const text = error instanceof Error ? error.message : String(error);
+        if (/auth|gh auth login|not logged/i.test(text)) {
+            throw new Error("GitHub CLI is not authenticated — run `gh auth login`.");
+        }
+        throw new Error(`Could not clone ${repo}: ${text}`);
+    }
+}
