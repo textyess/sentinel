@@ -111,7 +111,7 @@ weakens the read-only safety boundary. See [`.claude/skills/sentinel-onboarding`
 | `pnpm dev` | The Next.js dashboard (UI + API) on `127.0.0.1:4317`. |
 | `pnpm typecheck` | `tsc --noEmit` — the build / CI gate. |
 
-`crawl`, `pr`, and `verify` take flags (`--max-pages`, `--base-url`, `--max-flows`, …); run any with `--help`. `guard`, `login`, `smoke`, and `crawl` accept `--project <slug>` to drive a registered no-code project instead of a built-in adapter.
+`crawl`, `pr`, and `verify` take flags (`--max-pages`, `--base-url`, `--max-flows`, …); run any with `--help`. Every run command — `guard`, `login`, `smoke`, `crawl`, `sitemap`, `skills` (and its subcommands), `pr`, and `verify` — accepts `--project <slug>` to drive a registered no-code project instead of a built-in adapter.
 
 ## Safety
 

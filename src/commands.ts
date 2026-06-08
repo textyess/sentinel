@@ -259,10 +259,10 @@ export async function runCrawl(
  * Phase 1: turn the latest interaction graph into a human-readable Markdown site
  * map via the LLM reasoning layer. Reads the saved graph — no browsing needed.
  */
-export async function runSiteMap(): Promise<void> {
+export async function runSiteMap(projectId?: string): Promise<void> {
     logger.banner("Phase 1 site map — synthesize a readable map from the graph");
     const env = loadEnvConfig();
-    const adapter = getAdapter();
+    const adapter = await resolveAdapter(projectId, env);
 
     const graphFile = path.join(env.outputDir, adapter.id, "graph", "latest.json");
     if (!fs.existsSync(graphFile)) {
@@ -296,10 +296,10 @@ export async function runSiteMap(): Promise<void> {
  * SKILL.md. Reads the saved graph (no browsing). Every skill body is LLM-authored
  * from the observed data and verified against the graph, so the LLM is required.
  */
-export async function runSkills(): Promise<void> {
+export async function runSkills(projectId?: string): Promise<void> {
     logger.banner("Phase 1 skills — author a navigation skill pack from the graph");
     const env = loadEnvConfig();
-    const adapter = getAdapter();
+    const adapter = await resolveAdapter(projectId, env);
 
     const graphFile = path.join(env.outputDir, adapter.id, "graph", "latest.json");
     if (!fs.existsSync(graphFile)) {
@@ -338,11 +338,14 @@ export async function runSkillsPromote(
     proposalsPath: string | null,
     maxPages: number,
     actuationsPerPage: number,
+    projectId?: string,
 ): Promise<void> {
     logger.banner("Phase E skills — reconcile/promote from a fresh baseline crawl");
     const env = loadEnvConfig();
-    const adapter = getAdapter();
-    requireCredentials(adapter);
+    const adapter = await resolveAdapter(projectId, env, { requireBaseUrl: true });
+    if (adapter.authRequired) {
+        requireCredentials(adapter);
+    }
 
     const credentialIssue = llmCredentialIssue(env.llmProvider);
     if (credentialIssue) {
@@ -400,10 +403,10 @@ export async function runSkillsPromote(
  * selector appendix is stripped and the safety note rewritten for a runtime without
  * Sentinel's guards. The per-skill folders drop straight into a `.claude/skills/` dir.
  */
-export async function runSkillsExport(outDir: string | null): Promise<void> {
+export async function runSkillsExport(outDir: string | null, projectId?: string): Promise<void> {
     logger.banner("Phase 1 skills — export a portable skill pack");
     const env = loadEnvConfig();
-    const adapter = getAdapter();
+    const adapter = await resolveAdapter(projectId, env);
     const dest = outDir ?? path.join(env.outputDir, adapter.id, "skills-export");
     const result = exportSkillPack({ outputDir: env.outputDir, adapterId: adapter.id, outDir: dest });
     logger.success(`Exported ${result.skillCount} portable skill(s) -> ${result.dir}`);
@@ -415,10 +418,10 @@ export async function runSkillsExport(outDir: string | null): Promise<void> {
  * Imports are descriptive only — capability frontmatter is dropped and no bundled
  * scripts are copied; the safety guards remain the sole authority regardless.
  */
-export async function runSkillsImport(sourceDir: string, overwrite: boolean): Promise<void> {
+export async function runSkillsImport(sourceDir: string, overwrite: boolean, projectId?: string): Promise<void> {
     logger.banner("Phase 1 skills — import a navigation skill pack");
     const env = loadEnvConfig();
-    const adapter = getAdapter();
+    const adapter = await resolveAdapter(projectId, env);
     const result = importSkillPack({ outputDir: env.outputDir, adapterId: adapter.id, sourceDir, overwrite });
     logger.success(`Imported ${result.installed.length}/${result.total} skill(s) into ${adapter.id}.`);
     if (result.installed.length > 0) {
@@ -449,13 +452,18 @@ function reportCoverage(c: CoverageReport): void {
  * Resolves the preview URL from GitHub, maps the diff to routes, re-walks the
  * matching baseline flows with video + console/network capture + control diffing.
  */
-export async function runPr(prNumber: number, baseUrlOverride: string | null, maxFlows: number): Promise<void> {
+export async function runPr(
+    prNumber: number,
+    baseUrlOverride: string | null,
+    maxFlows: number,
+    projectId?: string,
+): Promise<void> {
     if (prNumber <= 0) {
         throw new Error("Provide a PR number, e.g. `sentinel pr 1356`.");
     }
     logger.banner(`Phase 2 PR replay — #${prNumber}`);
     const env = loadEnvConfig();
-    const adapter = getAdapter();
+    const adapter = await resolveAdapter(projectId, env);
     const credentials = requireCredentials(adapter);
 
     const meta = await getPrMeta(prNumber);
@@ -494,7 +502,10 @@ export async function runPr(prNumber: number, baseUrlOverride: string | null, ma
     logger.info(`Replaying ${flows.length} flow(s) from the baseline graph (${selectionMode}).`);
 
     // Build a target-scoped adapter so the preflight's prod detection runs against the real preview URL.
-    const preflight = await runProductionPreflight(getAdapter({ baseUrl: targetUrl }), env.allowProdWrites);
+    const preflight = await runProductionPreflight(
+        await resolveAdapter(projectId, env, { baseUrl: targetUrl }),
+        env.allowProdWrites,
+    );
     await ensureAppReachable(targetUrl);
 
     const runDir = path.join(env.outputDir, adapter.id, "pr-runs", `${prNumber}-${stamp()}`);
@@ -606,14 +617,19 @@ function reportPrRun(manifest: PrRunManifest, runDir: string): void {
  * Phase 3: plan a browser test that demonstrates a PR's change, run it on the
  * preview (read-only, on camera), then judge whether the PR does what it claims.
  */
-export async function runVerify(prNumber: number, baseUrlOverride: string | null, planOnly: boolean): Promise<void> {
+export async function runVerify(
+    prNumber: number,
+    baseUrlOverride: string | null,
+    planOnly: boolean,
+    projectId?: string,
+): Promise<void> {
     if (prNumber <= 0) {
         throw new Error("Provide a PR number, e.g. `sentinel verify 1356`.");
     }
     logger.banner(`Phase 3 verify — #${prNumber}${planOnly ? " (plan only)" : ""}`);
     const env = loadEnvConfig();
     const repo = await detectRepo();
-    const adapter = getAdapter();
+    const adapter = await resolveAdapter(projectId, env);
     requireCredentials(adapter);
 
     const issue = llmCredentialIssue(env.llmProvider);
@@ -643,7 +659,7 @@ export async function runVerify(prNumber: number, baseUrlOverride: string | null
 
     // A target-scoped adapter so the preflight's prod detection runs against the real target.
     const result = await runVerifyForProject({
-        adapter: getAdapter({ baseUrl: targetUrl }),
+        adapter: await resolveAdapter(projectId, env, { baseUrl: targetUrl }),
         repo,
         prNumber,
         targetUrl,

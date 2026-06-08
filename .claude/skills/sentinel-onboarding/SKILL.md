@@ -147,6 +147,10 @@ Tell the user: the project slug, the config path, the baseline graph location
 once the bot is deployed — point them to Sentinel's `DEPLOY.md`), and any fields you guessed
 that they should double-check (low-confidence auth labels, `previewEnvIncludes`).
 
+For a one-off local check without the bot, every run command takes `--project <slug>`, so
+`sentinel verify <PR#> --project <slug>` runs the full plan → execute → judge pipeline
+against that PR's preview (likewise `pr`, `sitemap`, `skills`).
+
 ## Validation / success criteria
 
 - `sentinel register` exits 0 and `.sentinel/server/projects.json` contains the project.

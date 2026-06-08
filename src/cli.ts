@@ -91,24 +91,30 @@ program
 program
     .command("sitemap")
     .description("Phase 1: synthesize a human-readable site map from the latest interaction graph.")
-    .action(wrap(runSiteMap));
+    .option("--project <slug>", PROJECT_OPT)
+    .action((opts: { project?: string }) => wrap(() => runSiteMap(opts.project))());
 
 const skills = program
     .command("skills")
     .description("Phase 1: project the latest interaction graph into a loadable navigation skill pack.")
-    .action(wrap(runSkills));
+    .option("--project <slug>", PROJECT_OPT)
+    .action((opts: { project?: string }) => wrap(() => runSkills(opts.project))());
 
 skills
     .command("export [outDir]")
     .description("Export a portable copy of the skill pack (selectors stripped, safety note rewritten).")
-    .action((outDir: string | undefined) => wrap(() => runSkillsExport(outDir ?? null))());
+    .option("--project <slug>", PROJECT_OPT)
+    .action((outDir: string | undefined, opts: { project?: string }) =>
+        wrap(() => runSkillsExport(outDir ?? null, opts.project))(),
+    );
 
 skills
     .command("import <dir>")
     .description("Import a navigation skill pack (descriptive only — scripts and tool grants are not imported).")
     .option("--overwrite", "overwrite skills that already exist")
-    .action((dir: string, opts: { overwrite?: boolean }) =>
-        wrap(() => runSkillsImport(dir, Boolean(opts.overwrite)))(),
+    .option("--project <slug>", PROJECT_OPT)
+    .action((dir: string, opts: { overwrite?: boolean; project?: string }) =>
+        wrap(() => runSkillsImport(dir, Boolean(opts.overwrite), opts.project))(),
     );
 
 skills
@@ -119,12 +125,14 @@ skills
     .option("--proposals <path>", "a verify run's skill-proposals.json — used as a drift gate + report, never copied")
     .option("--max-pages <n>", "maximum unique page states to map", "40")
     .option("--actuations-per-page <n>", "max controls to actuate per page", "6")
-    .action((opts: { proposals?: string; maxPages: string; actuationsPerPage: string }) =>
+    .option("--project <slug>", PROJECT_OPT)
+    .action((opts: { proposals?: string; maxPages: string; actuationsPerPage: string; project?: string }) =>
         wrap(() =>
             runSkillsPromote(
                 opts.proposals ?? null,
                 parsePositiveInt(opts.maxPages, 40),
                 parsePositiveInt(opts.actuationsPerPage, 6),
+                opts.project,
             ),
         )(),
     );
@@ -135,8 +143,16 @@ program
     .description("Phase 2: replay a PR's affected flows against its web preview deployment, with video.")
     .option("--base-url <url>", "target URL override (e.g. a specific preview deployment)")
     .option("--max-flows <n>", "maximum flows to replay", "12")
-    .action((numberArg: string, opts: { baseUrl?: string; maxFlows: string }) =>
-        wrap(() => runPr(parsePositiveInt(numberArg, 0), opts.baseUrl ?? null, parsePositiveInt(opts.maxFlows, 12)))(),
+    .option("--project <slug>", PROJECT_OPT)
+    .action((numberArg: string, opts: { baseUrl?: string; maxFlows: string; project?: string }) =>
+        wrap(() =>
+            runPr(
+                parsePositiveInt(numberArg, 0),
+                opts.baseUrl ?? null,
+                parsePositiveInt(opts.maxFlows, 12),
+                opts.project,
+            ),
+        )(),
     );
 
 program
@@ -145,8 +161,11 @@ program
     .description("Phase 3: plan a browser test for a PR, run it on the preview (read-only, recorded), and judge it.")
     .option("--base-url <url>", "target URL override (e.g. a specific preview deployment)")
     .option("--plan-only", "generate and print the to-do plan without executing it")
-    .action((numberArg: string, opts: { baseUrl?: string; planOnly?: boolean }) =>
-        wrap(() => runVerify(parsePositiveInt(numberArg, 0), opts.baseUrl ?? null, Boolean(opts.planOnly)))(),
+    .option("--project <slug>", PROJECT_OPT)
+    .action((numberArg: string, opts: { baseUrl?: string; planOnly?: boolean; project?: string }) =>
+        wrap(() =>
+            runVerify(parsePositiveInt(numberArg, 0), opts.baseUrl ?? null, Boolean(opts.planOnly), opts.project),
+        )(),
     );
 
 await program.parseAsync(process.argv);
