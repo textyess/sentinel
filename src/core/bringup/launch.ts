@@ -79,6 +79,11 @@ function makeLogBuffer(): { append(chunk: string): void; read(): string } {
     };
 }
 
+/** Exit 127 is the shell's "command not found" — name the likely cause instead of a bare code. */
+function exitHint(code: number | null): string {
+    return code === 127 ? " (command not found — is the tool installed on the Sentinel host?)" : "";
+}
+
 /** Run a one-shot command (e.g. install) to completion; reject on non-zero exit or timeout. */
 function runToCompletion(
     cmd: string,
@@ -114,7 +119,7 @@ function runToCompletion(
             if (code === 0) {
                 resolve();
             } else {
-                reject(new Error(`${opts.label} exited with code ${code}.\n${log.read()}`));
+                reject(new Error(`${opts.label} exited with code ${code}${exitHint(code)}.\n${log.read()}`));
             }
         });
     });
@@ -209,7 +214,7 @@ export async function launchLocalApp(recipe: RunRecipe, opts: LaunchOptions): Pr
 
     try {
         await ensureAppReachable(probeUrl, recipe.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS, () =>
-            exited ? `process exited (code ${exited.code}, signal ${exited.signal})` : null,
+            exited ? `process exited (code ${exited.code}, signal ${exited.signal})${exitHint(exited.code)}` : null,
         );
     } catch (error) {
         await stop();
