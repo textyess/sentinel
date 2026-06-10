@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { applyEnvVar, EnvFileWriteError } from "../index";
+import { applyEnvVar, EnvFileWriteError, isReservedSecretEnvName } from "../index";
 import { HttpError } from "./errors";
 import { listProjects } from "./store";
 
@@ -39,15 +39,25 @@ const NON_SECRET_KEYS = new Set<string>([
 
 const KEY_RE = /^[A-Z][A-Z0-9_]*$/;
 
-/** Static keys ∪ each registered generic project's declared credential env-var names. */
+/**
+ * Static keys ∪ each registered project's declared credential env-var names ∪ its
+ * run-recipe secret names — the registration form promises recipe secret VALUES are
+ * set in Settings, so every declared name must be manageable here. Reserved names
+ * (Sentinel's own credentials) are excluded even if persisted by an older record.
+ */
 async function resolveAllowlist(): Promise<Set<string>> {
     const allow = new Set<string>(STATIC_ALLOWLIST);
     for (const project of await listProjects()) {
-        if (!project.adapter) {
-            continue;
-        }
-        for (const key of [project.adapter.emailEnv, project.adapter.passwordEnv]) {
+        for (const key of [project.adapter?.emailEnv, project.adapter?.passwordEnv]) {
             if (key && KEY_RE.test(key)) {
+                allow.add(key);
+            }
+        }
+        // Recipe secrets must never name Sentinel's own credentials (the launcher refuses
+        // them anyway) — don't let an older persisted record open them up for writing.
+        // Per-project login creds are exempt: their convention IS the SENTINEL_ prefix.
+        for (const key of project.runRecipe?.secretEnv ?? []) {
+            if (KEY_RE.test(key) && !isReservedSecretEnvName(key)) {
                 allow.add(key);
             }
         }
