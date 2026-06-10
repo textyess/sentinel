@@ -16,10 +16,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { useAdapters, useAutodetect, useCreateProject } from "@/hooks/queries";
+import { useAdapters, useAutodetect, useCreateProject, useScanRecipe, useTrialBringUp } from "@/hooks/queries";
 import { useLiveRun } from "@/hooks/use-live-run";
 import { ApiError } from "@/lib/api";
-import type { AdapterKind, AutodetectFieldMeta, CreateProjectInput } from "@/lib/types";
+import type { AdapterKind, AutodetectFieldMeta, CreateProjectInput, RunRecipeInput } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const DEFAULTS = {
@@ -37,6 +37,14 @@ const DEFAULTS = {
     pagesPrefix: "",
     publicRoutes: "/login",
     allowedMutationPatterns: "^/login$",
+    // "yes" → read the PR preview URL from GitHub; "no" → Sentinel starts the app itself.
+    hasPreview: "yes",
+    runInstallCmd: "npm install",
+    runStartCmd: "npm run dev",
+    runPort: "3000",
+    runReadyPath: "/",
+    runSecretEnv: "",
+    runEnv: "",
 };
 
 type FormState = typeof DEFAULTS;
@@ -46,6 +54,23 @@ function splitList(value: string): string[] {
         .split(/[,\n]/)
         .map((v) => v.trim())
         .filter(Boolean);
+}
+
+/** Parse a textarea of `KEY=VALUE` lines into a record (blank lines and `#` comments ignored). */
+function parseEnvLines(value: string): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const line of value.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) {
+            continue;
+        }
+        const eq = trimmed.indexOf("=");
+        if (eq <= 0) {
+            continue;
+        }
+        out[trimmed.slice(0, eq).trim()] = trimmed.slice(eq + 1).trim();
+    }
+    return out;
 }
 
 /** The Sentinel-side env var that will hold this repo's test login (mirrors the server). */
@@ -118,12 +143,19 @@ export function RegisterProjectDialog({
     const [meta, setMeta] = useState<Record<string, AutodetectFieldMeta>>({});
     const [notes, setNotes] = useState<string[]>([]);
     const [runId, setRunId] = useState<string | null>(null);
+    const [trialRunId, setTrialRunId] = useState<string | null>(null);
     const [confirmOpen, setConfirmOpen] = useState(false);
 
     const { data: adapters } = useAdapters(open);
     const kinds = adapters?.kinds ?? ["generic"];
     const create = useCreateProject();
     const detect = useAutodetect();
+    const trial = useTrialBringUp();
+    const trialLive = useLiveRun(trialRunId);
+    const trialing = trial.isPending || trialLive.streaming;
+    const trialDone = trialLive.done?.kind === "trial" ? trialLive.done : null;
+    const scan = useScanRecipe();
+    const [recipeNotes, setRecipeNotes] = useState<string[]>([]);
     const live = useLiveRun(runId);
     // `runId !== null` keeps the button disabled across the gap between the POST
     // resolving and useLiveRun's effect setting streaming=true (no re-enable flicker).
@@ -141,6 +173,8 @@ export function RegisterProjectDialog({
         setMeta({});
         setNotes([]);
         setRunId(null);
+        setTrialRunId(null);
+        setRecipeNotes([]);
         setConfirmOpen(false);
     }
 
@@ -211,14 +245,79 @@ export function RegisterProjectDialog({
         }
     }
 
+    function buildRunRecipe(): RunRecipeInput {
+        const literalEnv = parseEnvLines(form.runEnv);
+        const secretEnv = splitList(form.runSecretEnv);
+        return {
+            installCmd: form.runInstallCmd.trim() || undefined,
+            runCmd: form.runStartCmd.trim(),
+            port: Number.parseInt(form.runPort, 10) || 3000,
+            readyPath: form.runReadyPath.trim() || undefined,
+            ...(Object.keys(literalEnv).length > 0 ? { env: literalEnv } : {}),
+            ...(secretEnv.length > 0 ? { secretEnv } : {}),
+        };
+    }
+
+    async function detectRecipe() {
+        const repo = form.repo.trim();
+        if (!repo) {
+            toast.error("Enter a repository (owner/name) first.");
+            return;
+        }
+        try {
+            const { recipe, notes: scannedNotes } = await scan.mutateAsync(repo);
+            setRecipeNotes(scannedNotes);
+            if (!recipe) {
+                toast.error(scannedNotes[0] ?? "Could not read the repository.");
+                return;
+            }
+            setForm((f) => ({
+                ...f,
+                runInstallCmd: recipe.installCmd,
+                runStartCmd: recipe.runCmd,
+                runPort: String(recipe.port),
+                runReadyPath: recipe.readyPath,
+                runSecretEnv: recipe.secretEnv.join(", "),
+            }));
+            toast.success("Detected a recipe from the repo — review, then Test bring-up.");
+        } catch (err) {
+            toast.error(err instanceof ApiError ? err.message : "Could not scan the repository");
+        }
+    }
+
+    async function runTrial() {
+        const repo = form.repo.trim();
+        if (!repo) {
+            toast.error("Enter a repository (owner/name) first.");
+            return;
+        }
+        if (!form.runStartCmd.trim()) {
+            toast.error("Enter the command that starts your app (e.g. npm run dev).");
+            return;
+        }
+        const port = Number.parseInt(form.runPort, 10);
+        if (!Number.isFinite(port) || port <= 0 || port > 65535) {
+            toast.error("Enter a valid port the app listens on (1–65535).");
+            return;
+        }
+        try {
+            const { runId: id } = await trial.mutateAsync({ repo, runRecipe: buildRunRecipe() });
+            setTrialRunId(id);
+        } catch (err) {
+            toast.error(err instanceof ApiError ? err.message : "Could not start the trial bring-up");
+        }
+    }
+
     function doSubmit() {
         const previewEnvIncludes = form.previewEnvIncludes.trim() || "web";
+        const runRecipe: RunRecipeInput | null = form.hasPreview === "no" ? buildRunRecipe() : null;
         const body: CreateProjectInput = {
             repo: form.repo.trim(),
             adapterKind,
             previewEnvIncludes,
             mentionHandle: form.mentionHandle.trim() || "@sentinel",
             baselineUrl: form.baselineUrl.trim() || null,
+            runRecipe,
             adapter:
                 adapterKind === "generic"
                     ? {
@@ -263,6 +362,18 @@ export function RegisterProjectDialog({
         if (!form.repo.trim()) {
             toast.error("Enter a repository (owner/name).");
             return;
+        }
+        // No-preview projects must declare how to start the app.
+        if (form.hasPreview === "no") {
+            if (!form.runStartCmd.trim()) {
+                toast.error("Enter the command that starts your app (e.g. npm run dev).");
+                return;
+            }
+            const port = Number.parseInt(form.runPort, 10);
+            if (!Number.isFinite(port) || port <= 0 || port > 65535) {
+                toast.error("Enter a valid port the app listens on (1–65535).");
+                return;
+            }
         }
         // A public (no-login) project has no write allow-list to validate or confirm.
         if (adapterKind === "generic" && !noAuth) {
@@ -334,12 +445,25 @@ export function RegisterProjectDialog({
                         </div>
 
                         <div className="grid gap-4 sm:grid-cols-2">
-                            <Field
-                                label="Preview env contains"
-                                name="previewEnvIncludes"
-                                value={form.previewEnvIncludes}
-                                onChange={update("previewEnvIncludes")}
-                            />
+                            <div className="grid gap-1.5">
+                                <Label htmlFor="hasPreview">Preview environment</Label>
+                                <Select
+                                    value={form.hasPreview}
+                                    onValueChange={(v) => setForm((f) => ({ ...f, hasPreview: v }))}>
+                                    <SelectTrigger id="hasPreview">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="yes">PR deploys a preview</SelectItem>
+                                        <SelectItem value="no">No preview — start it for me</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    {form.hasPreview === "yes"
+                                        ? "Sentinel reads the PR's preview URL from GitHub."
+                                        : "Sentinel checks out the PR branch and runs the app itself."}
+                                </p>
+                            </div>
                             <Field
                                 label="Mention handle"
                                 name="mentionHandle"
@@ -347,6 +471,127 @@ export function RegisterProjectDialog({
                                 onChange={update("mentionHandle")}
                             />
                         </div>
+
+                        {form.hasPreview === "yes" ? (
+                            <Field
+                                label="Preview env contains"
+                                name="previewEnvIncludes"
+                                hint="substring of the preview deployment's environment name (e.g. web)"
+                                value={form.previewEnvIncludes}
+                                onChange={update("previewEnvIncludes")}
+                            />
+                        ) : (
+                            <div className="grid gap-4 rounded-lg border border-dashed p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <span className="text-sm font-medium">How to start the app</span>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={detectRecipe}
+                                        disabled={scan.isPending}>
+                                        <SparklesIcon />
+                                        {scan.isPending ? "Scanning…" : "Detect from repo"}
+                                    </Button>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    Sentinel runs these from the PR's checked-out branch, then points the browser at the
+                                    local port. The app receives only the env you declare here — never Sentinel's own
+                                    secrets.
+                                </p>
+                                {recipeNotes.length > 0 && (
+                                    <ul className="grid gap-1 rounded-md border border-uncertain/25 bg-uncertain/10 p-3 text-xs text-foreground">
+                                        {recipeNotes.map((note) => (
+                                            <li key={note} className="flex gap-2">
+                                                <span aria-hidden className="text-uncertain">
+                                                    !
+                                                </span>
+                                                <span>{note}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <Field
+                                        label="Install command"
+                                        name="runInstallCmd"
+                                        placeholder="npm install"
+                                        value={form.runInstallCmd}
+                                        onChange={update("runInstallCmd")}
+                                    />
+                                    <Field
+                                        label="Start command"
+                                        name="runStartCmd"
+                                        placeholder="npm run dev"
+                                        value={form.runStartCmd}
+                                        onChange={update("runStartCmd")}
+                                    />
+                                    <Field
+                                        label="Port"
+                                        name="runPort"
+                                        inputMode="numeric"
+                                        placeholder="3000"
+                                        value={form.runPort}
+                                        onChange={update("runPort")}
+                                    />
+                                    <Field
+                                        label="Ready path"
+                                        name="runReadyPath"
+                                        placeholder="/"
+                                        value={form.runReadyPath}
+                                        onChange={update("runReadyPath")}
+                                    />
+                                </div>
+                                <Field
+                                    label="Secret env vars"
+                                    name="runSecretEnv"
+                                    hint="comma-separated NAMES — values come from Settings, never stored here"
+                                    value={form.runSecretEnv}
+                                    onChange={update("runSecretEnv")}
+                                />
+                                <div className="grid gap-1.5">
+                                    <Label htmlFor="runEnv">Non-secret env</Label>
+                                    <textarea
+                                        id="runEnv"
+                                        name="runEnv"
+                                        rows={3}
+                                        className="rounded-md border bg-transparent px-3 py-2 font-mono text-xs"
+                                        placeholder={"NEXT_PUBLIC_API_URL=https://staging.api\nFEATURE_FLAG=on"}
+                                        value={form.runEnv}
+                                        onChange={(e) => setForm((f) => ({ ...f, runEnv: e.target.value }))}
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        One KEY=VALUE per line. Safe, non-secret config only.
+                                    </p>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <Button type="button" variant="secondary" onClick={runTrial} disabled={trialing}>
+                                        <SparklesIcon />
+                                        {trialing ? "Starting…" : "Test bring-up"}
+                                    </Button>
+                                    <span className="text-xs text-muted-foreground">
+                                        Sentinel clones the default branch, runs this recipe, and checks the app answers
+                                        — proving it before you register.
+                                    </span>
+                                </div>
+                                {trialRunId && (trialLive.streaming || trialLive.lines.length > 0) && (
+                                    <div className="h-40">
+                                        <RunLog lines={trialLive.lines} streaming={trialLive.streaming} />
+                                    </div>
+                                )}
+                                {trialDone && (
+                                    <p className={cn("text-xs font-medium", trialDone.ok ? "text-pass" : "text-fail")}>
+                                        {trialDone.ok
+                                            ? `✓ Started and reachable at ${trialDone.baseUrl}`
+                                            : "✗ Bring-up failed — see the log above."}
+                                    </p>
+                                )}
+                                {trialLive.error && (
+                                    <p className="text-xs font-medium text-fail">✗ {trialLive.error}</p>
+                                )}
+                            </div>
+                        )}
 
                         <div className="grid gap-1.5">
                             <Label htmlFor="baselineUrl">Baseline URL</Label>

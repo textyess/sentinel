@@ -1,8 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { GenericProjectConfig } from "../index";
+import type { GenericProjectConfig, PersistedRunRecipe } from "../index";
 import {
     adapterForProject,
+    checkoutPr,
+    checkoutRepo,
     createReasoner,
     detectProjectConfig,
     endRun,
@@ -10,11 +12,13 @@ import {
     generateSkillPack,
     getPrMeta,
     isGhAuthenticated,
+    launchLocalApp,
     llmCredentialIssue,
     loadEnvConfig,
     loadGraph,
     logger,
     redactSecret,
+    resolvePersistedRecipe,
     resolveProductionUrl,
     resolveWebPreviewUrl,
     runCrawlForProject,
@@ -35,6 +39,7 @@ import {
     publishDone,
     publishError,
     publishSkillsDone,
+    publishTrialDone,
 } from "./sse";
 import { upsertRunRecord } from "./store";
 import type { AutodetectProposal, ProjectRecord, RunRecord, RunStatus } from "./types";
@@ -190,6 +195,10 @@ export async function runProject(
             );
         }
 
+        // When the PR has no preview deployment but the project declares a run recipe,
+        // Sentinel starts the app itself from the PR branch. The heavy work (checkout,
+        // install, dev server) runs inside the slot below; here we only decide the path.
+        let bringUpRecipe: PersistedRunRecipe | null = null;
         if (!targetUrl) {
             let headSha: string;
             try {
@@ -200,13 +209,21 @@ export async function runProject(
                 return await fail("errored", `Could not read PR #${prNumber}: ${msg(error)}`);
             }
             targetUrl = await resolveWebPreviewUrl(repo, headSha, project.previewEnvIncludes);
-            if (!targetUrl) {
-                return await fail("blocked", `No ready preview deployment found for PR #${prNumber} yet.`);
+            if (targetUrl) {
+                adapter = adapterForProject(project, env, { baseUrl: targetUrl });
+            } else if (project.runRecipe) {
+                bringUpRecipe = project.runRecipe;
+            } else {
+                return await fail(
+                    "blocked",
+                    `No ready preview deployment found for PR #${prNumber} yet, and no run recipe is configured to start it locally.`,
+                );
             }
-            adapter = adapterForProject(project, env, { baseUrl: targetUrl });
         }
 
-        // The server ALWAYS runs read-only, regardless of any adapter/env default.
+        // The server ALWAYS runs read-only, regardless of any adapter/env default. (Also
+        // re-applied after a local bring-up rebuilds the adapter, so a self-hosted target
+        // whose backend points at prod still can't be written to.)
         adapter.safety = { ...adapter.safety, readOnly: true };
 
         const graphFile = path.join(env.outputDir, project.id, "graph", "latest.json");
@@ -219,7 +236,48 @@ export async function runProject(
 
         // Acquire a slot ONLY around the browser run, inside a try/finally that always releases it.
         await acquireSlot(config.maxConcurrent);
+        // Stops a locally-started app + removes its checkout; a no-op for the preview path.
+        let teardownLocal: () => Promise<void> = async () => {};
         try {
+            if (bringUpRecipe) {
+                const checkoutRoot = path.join(env.outputDir, project.id, "checkouts");
+                const checkout = await checkoutPr(repo, prNumber, checkoutRoot);
+                teardownLocal = () => checkout.cleanup();
+                const resolved = resolvePersistedRecipe(bringUpRecipe);
+                // A name reserved for Sentinel's own credentials must never start the app —
+                // this is a security backstop behind the API validation. (teardownLocal still
+                // fires in the slot's finally, so the checkout is cleaned up.)
+                if (resolved.rejectedSecrets.length > 0) {
+                    return await fail(
+                        "blocked",
+                        `I won't start ${project.displayName} for this PR — its run recipe references env vars reserved for Sentinel's own credentials: ${resolved.rejectedSecrets.join(", ")}. Remove them from the recipe.`,
+                    );
+                }
+                // A declared secret that isn't configured means the app would boot degraded and
+                // the verdict would judge a broken app — surface it as blocked, like missing creds.
+                if (resolved.missingSecrets.length > 0) {
+                    return await fail(
+                        "blocked",
+                        `I can't start ${project.displayName} for this PR — its run recipe declares secrets that aren't set: ${resolved.missingSecrets.join(", ")}. Add them in Settings and re-run.`,
+                    );
+                }
+                const app = await launchLocalApp(resolved.recipe, { cwd: checkout.dir });
+                teardownLocal = async () => {
+                    await app.stop();
+                    await checkout.cleanup();
+                };
+                targetUrl = app.baseUrl;
+                adapter = adapterForProject(project, env, { baseUrl: targetUrl });
+                adapter.safety = { ...adapter.safety, readOnly: true };
+                logger.info(`Self-hosting ${repo}#${prNumber} at ${targetUrl} (no preview deployment found).`);
+            }
+            if (!targetUrl) {
+                // Unreachable: a preview/opts URL or the local bring-up above always sets it.
+                throw new Error("internal: target URL was not resolved before verify.");
+            }
+            // Capture into a const so the narrowing survives into the runWithProgress closure
+            // (targetUrl is a reassigned `let`, so TS widens it back to string|null otherwise).
+            const verifyTargetUrl = targetUrl;
             const reasoner = createReasoner(env);
             startRun(`verify-${prNumber}`, {
                 pr: prNumber,
@@ -233,7 +291,7 @@ export async function runProject(
                         adapter,
                         repo,
                         prNumber,
-                        targetUrl,
+                        targetUrl: verifyTargetUrl,
                         reasoner,
                         env,
                         outputDir: env.outputDir,
@@ -279,6 +337,8 @@ export async function runProject(
         } catch (error) {
             return await fail("errored", `Run failed: ${msg(error)}`);
         } finally {
+            // Always reap a locally-started app + its checkout, on success or failure.
+            await teardownLocal().catch((error) => logger.warn(`Local teardown failed: ${msg(error)}`));
             releaseSlot();
         }
     } finally {
@@ -372,9 +432,20 @@ export async function crawlProject(
     try {
         await upsertRunRecord(record);
 
-        const baselineUrl = resolveBaselineUrl(project, env);
+        let baselineUrl = resolveBaselineUrl(project, env);
+        // No baseline URL but a run recipe → self-host the default branch for the crawl,
+        // so a no-preview project can build its baseline without an external URL. The heavy
+        // bring-up runs inside the slot below.
+        let bringUpRecipe: PersistedRunRecipe | null = null;
         if (!baselineUrl) {
-            return await fail("blocked", "Set a baseline URL for this project first (the URL Sentinel should crawl).");
+            if (project.runRecipe) {
+                bringUpRecipe = project.runRecipe;
+            } else {
+                return await fail(
+                    "blocked",
+                    "Set a baseline URL for this project first (the URL Sentinel should crawl), or add a run recipe so Sentinel can start it.",
+                );
+            }
         }
 
         let adapter: ReturnType<typeof adapterForProject>;
@@ -390,7 +461,36 @@ export async function crawlProject(
         adapter.safety = { ...adapter.safety, readOnly: true };
 
         await acquireSlot(config.maxConcurrent);
+        // Stops a locally-started app + removes its checkout; a no-op when crawling a URL.
+        let teardownLocal: () => Promise<void> = async () => {};
         try {
+            if (bringUpRecipe) {
+                const checkoutRoot = path.join(env.outputDir, project.id, "checkouts");
+                const checkout = await checkoutRepo(project.repo, checkoutRoot);
+                teardownLocal = () => checkout.cleanup();
+                const resolved = resolvePersistedRecipe(bringUpRecipe);
+                if (resolved.rejectedSecrets.length > 0) {
+                    return await fail(
+                        "blocked",
+                        `I won't start ${project.displayName} — its run recipe references env vars reserved for Sentinel's own credentials: ${resolved.rejectedSecrets.join(", ")}. Remove them from the recipe.`,
+                    );
+                }
+                if (resolved.missingSecrets.length > 0) {
+                    return await fail(
+                        "blocked",
+                        `I can't start ${project.displayName} — its run recipe declares secrets that aren't set: ${resolved.missingSecrets.join(", ")}. Add them in Settings and re-run.`,
+                    );
+                }
+                const app = await launchLocalApp(resolved.recipe, { cwd: checkout.dir });
+                teardownLocal = async () => {
+                    await app.stop();
+                    await checkout.cleanup();
+                };
+                baselineUrl = app.baseUrl;
+                adapter = adapterForProject(project, env, { baseUrl: baselineUrl });
+                adapter.safety = { ...adapter.safety, readOnly: true };
+                logger.info(`Self-hosting ${project.repo} (default branch) at ${baselineUrl} for the baseline crawl.`);
+            }
             const llmIssue = llmCredentialIssue(env.llmProvider);
             // Crawl degrades to link-only without an LLM (not blocked).
             const reasoner = opts.interact === false || llmIssue ? null : createReasoner(env);
@@ -431,6 +531,8 @@ export async function crawlProject(
         } catch (error) {
             return await fail("errored", `Crawl failed: ${msg(error)}`);
         } finally {
+            // Always reap a locally-started app + its checkout, on success or failure.
+            await teardownLocal().catch((error) => logger.warn(`Local teardown failed: ${msg(error)}`));
             releaseSlot();
         }
     } finally {
@@ -556,6 +658,91 @@ export function triggerSkillsInBackground(project: ProjectRecord): string {
     primeStream(runId);
     void generateSkillsProject(project, { runId }).catch((error) => {
         logger.warn(`Skills ${runId} crashed: ${msg(error)}`);
+    });
+    return runId;
+}
+
+/** Per-repo guard so one repo isn't trial-brought-up twice at once. Keyed by "owner/name". */
+const trialInFlight = singleton("runner.trialInFlight", () => new Set<string>());
+export function isTrialRunning(repo: string): boolean {
+    return trialInFlight.has(repo);
+}
+
+export interface TrialBringUpInput {
+    repo: string;
+    runRecipe: PersistedRunRecipe;
+    runId?: string;
+}
+
+/**
+ * "Prove it" onboarding check: clone the default branch, run the recipe, and confirm the
+ * app answers HTTP — then tear it all down. No LLM, no baseline, no credentials; it only
+ * answers "can Sentinel actually start this app?" so a no-preview project can validate its
+ * recipe before the first PR. Streams progress and shares the global run slot + read-only
+ * isolation (the spawned child never receives Sentinel's own secrets).
+ */
+export async function trialBringUp(input: TrialBringUpInput): Promise<{ runId: string; status: RunStatus }> {
+    const env = loadEnvConfig();
+    const config = loadServerConfig();
+    const runId = input.runId ?? `${slug(input.repo)}__trial-${stamp()}`;
+    const flightKey = input.repo;
+
+    if (trialInFlight.has(flightKey)) {
+        return { runId, status: "blocked" };
+    }
+    trialInFlight.add(flightKey);
+
+    try {
+        const resolved = resolvePersistedRecipe(input.runRecipe);
+        if (resolved.rejectedSecrets.length > 0) {
+            publishError(
+                runId,
+                `The run recipe references env vars reserved for Sentinel's own credentials: ${resolved.rejectedSecrets.join(", ")}. Remove them.`,
+            );
+            return { runId, status: "errored" };
+        }
+        if (resolved.missingSecrets.length > 0) {
+            publishError(
+                runId,
+                `The run recipe declares secrets that aren't set: ${resolved.missingSecrets.join(", ")}. Add them in Settings and try again.`,
+            );
+            return { runId, status: "blocked" };
+        }
+
+        await acquireSlot(config.maxConcurrent);
+        let teardownLocal: () => Promise<void> = async () => {};
+        try {
+            const baseUrl = await runWithProgress(runId, async () => {
+                const checkoutRoot = path.join(env.outputDir, slug(input.repo), "checkouts");
+                const checkout = await checkoutRepo(input.repo, checkoutRoot);
+                teardownLocal = () => checkout.cleanup();
+                const app = await launchLocalApp(resolved.recipe, { cwd: checkout.dir });
+                teardownLocal = async () => {
+                    await app.stop();
+                    await checkout.cleanup();
+                };
+                logger.success(`Bring-up succeeded — ${input.repo} is reachable at ${app.baseUrl}.`);
+                return app.baseUrl;
+            });
+            publishTrialDone(runId, { ok: true, baseUrl });
+            return { runId, status: "passed" };
+        } catch (error) {
+            publishError(runId, `Bring-up failed: ${msg(error)}`);
+            return { runId, status: "errored" };
+        } finally {
+            await teardownLocal().catch((error) => logger.warn(`Local teardown failed: ${msg(error)}`));
+            releaseSlot();
+        }
+    } finally {
+        trialInFlight.delete(flightKey);
+    }
+}
+
+export function triggerTrialBringUpInBackground(input: Omit<TrialBringUpInput, "runId">): string {
+    const runId = `${slug(input.repo)}__trial-${stamp()}`;
+    primeStream(runId);
+    void trialBringUp({ ...input, runId }).catch((error) => {
+        logger.warn(`Trial bring-up ${runId} crashed: ${msg(error)}`);
     });
     return runId;
 }

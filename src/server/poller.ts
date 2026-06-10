@@ -193,7 +193,11 @@ async function handleMention(
     }
 
     const targetUrl = await resolveWebPreviewUrl(project.repo, headSha, project.previewEnvIncludes);
-    if (!targetUrl) {
+    // No preview AND no run recipe → the bounded preview-retry / terminal path below. When the
+    // project has a run recipe, fall through to claim + runProject with a null targetUrl, which
+    // checks out the PR branch and self-hosts it (the no-preview feature must work for the bot,
+    // not just the manual trigger).
+    if (!targetUrl && !project.runRecipe) {
         const nextRetries = retries + 1;
         if (nextRetries >= config.maxPreviewRetries) {
             setHandled(ledger, {

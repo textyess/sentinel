@@ -1,4 +1,5 @@
 import type { GenericProjectConfig } from "../adapters/generic";
+import type { PersistedRunRecipe } from "../core/bringup/recipe";
 import type { PlanStep, SkillDiscrepancy, StepResult, TestPlan, Verdict } from "../core/verify/types";
 
 /** Which adapter backs a registered project: "generic" (config-driven) or a registered built-in kind. */
@@ -23,6 +24,11 @@ export interface ProjectRecord {
     adapter: GenericProjectConfig | null;
     /** URL the baseline crawl maps (verify still targets the PR preview). Null → fall back to SENTINEL_BASE_URL. */
     baselineUrl?: string | null;
+    /**
+     * How to start the app locally when a PR has no preview deployment. Null → the run
+     * blocks (as today) when no preview is found. Secrets referenced by env-var name only.
+     */
+    runRecipe?: PersistedRunRecipe | null;
     createdAt: string;
 }
 

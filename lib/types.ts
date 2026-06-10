@@ -97,6 +97,30 @@ export interface GenericAdapterInput {
     allowedMutationPatterns: string[];
 }
 
+// How to start the app locally for repos with no PR preview deployment. Secrets are
+// referenced by env-var NAME (resolved from Sentinel's managed env at launch), never
+// stored raw — mirroring the credential env-var convention.
+export interface RunRecipeInput {
+    installCmd?: string;
+    runCmd: string;
+    port: number;
+    readyPath?: string;
+    /** Non-secret env literals (e.g. NEXT_PUBLIC_API_URL). */
+    env?: Record<string, string>;
+    /** Names of Sentinel-managed env vars injected at launch (secrets). */
+    secretEnv?: string[];
+}
+
+// Proposed by GET-less POST /api/scan-recipe — a clone-free guess at how to start the repo.
+export interface RunRecipeProposal {
+    installCmd: string;
+    runCmd: string;
+    port: number;
+    readyPath: string;
+    secretEnv: string[];
+    notes: string[];
+}
+
 export interface CreateProjectInput {
     repo: string;
     adapterKind: AdapterKind;
@@ -104,6 +128,8 @@ export interface CreateProjectInput {
     mentionHandle: string;
     baselineUrl: string | null;
     adapter: GenericAdapterInput | null;
+    /** Present when the project has no preview env and Sentinel must start it itself. */
+    runRecipe?: RunRecipeInput | null;
 }
 
 // ---- SSE live-run events ----------------------------------------------------
@@ -155,7 +181,8 @@ export type DoneEvent =
     | { kind?: undefined; verdict: Verdict; videoUrl: string | null }
     | { kind: "crawl"; coverage: CrawlCoverage; graphPresent: true }
     | { kind: "skills"; skillCount: number; areas: number }
-    | { kind: "autodetect"; proposal: AutodetectProposal };
+    | { kind: "autodetect"; proposal: AutodetectProposal }
+    | { kind: "trial"; ok: boolean; baseUrl: string | null };
 
 export type RunKind = "verify" | "crawl" | "autodetect" | "skills";
 

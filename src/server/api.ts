@@ -6,10 +6,13 @@ import type { StepResult, VerifyManifest } from "../index";
 import {
     adapterKinds,
     buildPortablePack,
+    detectRunRecipe,
     isAdapterKind,
     isGhAuthenticated,
+    isReservedSecretEnvName,
     llmCredentialIssue,
     loadEnvConfig,
+    type RunRecipeProposal,
 } from "../index";
 import { HttpError } from "./errors";
 import { assertWithin } from "./files";
@@ -21,10 +24,12 @@ import {
     isCrawlRunning,
     isPrRunning,
     isSkillsRunning,
+    isTrialRunning,
     triggerAutodetectInBackground,
     triggerCrawlInBackground,
     triggerRunInBackground,
     triggerSkillsInBackground,
+    triggerTrialBringUpInBackground,
 } from "./runner";
 import { getProject, listProjects, listRunRecords, removeProject, removeRunRecord, upsertProject } from "./store";
 import { tarGzip } from "./targz";
@@ -82,6 +87,26 @@ const genericAdapterSchema = z.object({
     destructiveControlPatterns: z.array(z.string()).optional(),
 });
 
+// How to start the app locally for repos with no PR preview. Secrets are referenced by
+// env-var NAME (resolved from Sentinel's managed env at launch), never stored raw here.
+const envVarName = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "must be a valid env var name");
+// A recipe's secretEnv resolves these names out of Sentinel's process.env into the spawned
+// PR app, so it must never reference Sentinel's OWN credentials — reject those at the door.
+const secretEnvName = envVarName.refine(
+    (n) => !isReservedSecretEnvName(n),
+    "must not name a Sentinel secret (SENTINEL_*, AWS_*, GH_TOKEN, GITHUB_TOKEN, ANTHROPIC_API_KEY, OPENAI_API_KEY)",
+);
+const runRecipeSchema = z.object({
+    installCmd: z.string().min(1).optional(),
+    runCmd: z.string().min(1),
+    port: z.number().int().positive().max(65535),
+    readyPath: z.string().optional(),
+    env: z.record(z.string(), z.string()).optional(),
+    secretEnv: z.array(secretEnvName).optional(),
+    installTimeoutMs: z.number().int().positive().optional(),
+    readyTimeoutMs: z.number().int().positive().optional(),
+});
+
 const projectSchema = z
     .object({
         repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/, "repo must be owner/name"),
@@ -90,6 +115,7 @@ const projectSchema = z
         mentionHandle: z.string().default("@sentinel"),
         baselineUrl: z.string().url().nullable().optional(),
         adapter: genericAdapterSchema.nullable().optional(),
+        runRecipe: runRecipeSchema.nullable().optional(),
     })
     .refine((d) => d.adapterKind !== "generic" || Boolean(d.adapter), {
         message: "generic projects require an adapter config",
@@ -167,13 +193,17 @@ export async function createProject(body: unknown): Promise<ProjectRecord> {
         mentionHandle: d.mentionHandle,
         adapter,
         baselineUrl: d.baselineUrl ?? null,
+        runRecipe: d.runRecipe ?? null,
         createdAt: new Date().toISOString(),
     };
     await upsertProject(record);
     return record;
 }
 
-const updateProjectSchema = z.object({ baselineUrl: z.string().url().nullable().optional() });
+const updateProjectSchema = z.object({
+    baselineUrl: z.string().url().nullable().optional(),
+    runRecipe: runRecipeSchema.nullable().optional(),
+});
 
 export async function updateProject(id: string, body: unknown): Promise<ProjectRecord> {
     const project = await getProject(id);
@@ -189,6 +219,9 @@ export async function updateProject(id: string, body: unknown): Promise<ProjectR
     const updated: ProjectRecord = { ...project };
     if (parsed.data.baselineUrl !== undefined) {
         updated.baselineUrl = parsed.data.baselineUrl;
+    }
+    if (parsed.data.runRecipe !== undefined) {
+        updated.runRecipe = parsed.data.runRecipe;
     }
     await upsertProject(updated);
     return updated;
@@ -276,6 +309,49 @@ export async function triggerAutodetect(body: unknown): Promise<{ runId: string;
     }
     const runId = triggerAutodetectInBackground({ repo, baselineUrl: baselineUrl ?? null, previewEnvIncludes });
     return { runId, status: "running" };
+}
+
+const trialBringUpSchema = z.object({
+    repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/, "repo must be owner/name"),
+    runRecipe: runRecipeSchema,
+});
+
+/**
+ * "Prove it" check for a (possibly unregistered) repo: clone the default branch, run the
+ * recipe, confirm the app answers HTTP, tear down. Returns a runId so the client can stream
+ * progress and read the pass/fail from the SSE `done` event before registering.
+ */
+export async function triggerTrialBringUp(body: unknown): Promise<{ runId: string; status: string }> {
+    const parsed = trialBringUpSchema.safeParse(body);
+    if (!parsed.success) {
+        throw new HttpError(400, parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+    }
+    if (isTrialRunning(parsed.data.repo)) {
+        throw new HttpError(409, `A trial bring-up for ${parsed.data.repo} is already in progress.`);
+    }
+    const runId = triggerTrialBringUpInBackground(parsed.data);
+    return { runId, status: "running" };
+}
+
+const scanRecipeSchema = z.object({
+    repo: z.string().regex(/^[^/\s]+\/[^/\s]+$/, "repo must be owner/name"),
+});
+
+/**
+ * Clone-free scan of a repo to propose a no-preview run recipe (install/start command, port,
+ * secret env names). Read-only and fast (a few contents-API reads), so it returns synchronously
+ * for the registration form to pre-fill. A null recipe means the repo couldn't be read.
+ */
+export async function scanRepoRecipe(body: unknown): Promise<{ recipe: RunRecipeProposal | null; notes: string[] }> {
+    const parsed = scanRecipeSchema.safeParse(body);
+    if (!parsed.success) {
+        throw new HttpError(400, parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+    }
+    const recipe = await detectRunRecipe(parsed.data.repo);
+    return {
+        recipe,
+        notes: recipe?.notes ?? ["Could not read the repository — check that the GitHub CLI is authenticated."],
+    };
 }
 
 /** Adapter kinds the registration form may offer (generic + any registered built-ins). */
