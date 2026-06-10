@@ -24,6 +24,13 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
+# Package managers for the no-preview bring-up path: Sentinel clones a target repo
+# and runs the operator's install/run recipe inside this container, and the recipe
+# scanner proposes the manager matching the repo's lockfile (pnpm/yarn/bun/npm).
+# The base image ships only npm + yarn classic, so a `pnpm install` recipe would die
+# with exit 127. Pinned to majors; bun's npm package resolves the platform binary.
+RUN npm install -g --no-audit --no-fund pnpm@10 bun@1
+
 WORKDIR /app
 
 # Install deps first for layer caching. The repo intentionally ships no lockfile

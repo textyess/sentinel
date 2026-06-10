@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as path from "node:path";
 import * as dotenv from "dotenv";
 import { MANAGED_ENV_FILE } from "../config";
 
@@ -101,6 +102,9 @@ export function writeEnvFileVar(file: string, key: string, value: string): void 
  * An empty value removes the key from both.
  */
 export function applyEnvVar(key: string, value: string): void {
+    // First boot with a configured state dir: nothing may have created it yet,
+    // and atomicWrite's rename would fail with a confusing ENOENT.
+    fs.mkdirSync(path.dirname(MANAGED_ENV_FILE), { recursive: true });
     writeEnvFileVar(MANAGED_ENV_FILE, key, value);
     if (value === "") {
         delete process.env[key];

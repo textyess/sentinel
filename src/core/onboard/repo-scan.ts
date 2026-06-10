@@ -195,7 +195,9 @@ export async function detectRunRecipe(repo: string): Promise<RunRecipeProposal |
     let runCmd: string;
     if (!scriptName && hasCompose) {
         runCmd = "docker compose up";
-        notes.push("Found docker-compose — proposing `docker compose up` to start the full stack.");
+        notes.push(
+            "Found docker-compose — proposing `docker compose up` to start the full stack (needs Docker on the Sentinel host; not available in the standard container deployment).",
+        );
     } else {
         const script = scriptName ?? "dev";
         runCmd = runCommand(pm, script);

@@ -140,6 +140,10 @@ a few minutes if the preview isn't ready yet.
 - **Dashboard link in comments.** Set `SENTINEL_DASHBOARD_URL` to your dashboard's URL
   if you expose one; otherwise the "view run" link points at localhost (harmless when
   the dashboard is private — the watchable recording link still works for everyone).
+- **No-preview bring-up runs inside this container.** A project registered without a
+  preview environment is cloned and started here, so the image carries `npm`, `pnpm`,
+  `yarn`, and `bun` for the recipe's install/run commands. A `docker compose up` recipe
+  won't work in the container deployment (no Docker daemon) — that needs a VPS install.
 
 ## Configuration reference
 
@@ -164,6 +168,10 @@ a few minutes if the preview isn't ready yet.
   volume isn't persistent and the graph was wiped on redeploy).
 - **"No ready preview deployment found"** → the PR's preview isn't built/successful yet,
   or the preview-env hint doesn't match. Check the project's `previewEnvIncludes`.
+- **Bring-up fails with `exited with code 127` / `command not found`** → the recipe uses
+  a tool the deployed image doesn't have. `npm`/`pnpm`/`yarn`/`bun` ship in the image;
+  anything else (`docker compose`, `make`, …) must be added to the Dockerfile — and the
+  image rebuilt/redeployed to pick it up.
 - **GitHub auth fails** → `GH_TOKEN` missing/expired or lacks scope; the bot account
   must have write access to the repo.
 - **Chromium won't launch** → make sure `SENTINEL_NO_SANDBOX=true` (set automatically in
