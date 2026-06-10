@@ -16,7 +16,7 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
-  <img alt="Node >= 22" src="https://img.shields.io/badge/node-%3E%3D22-339933?logo=node.js&logoColor=white">
+  <img alt="Node &gt;= 22" src="https://img.shields.io/badge/node-%3E%3D22-339933?logo=node.js&logoColor=white">
   <img alt="Playwright" src="https://img.shields.io/badge/Playwright-1.58-2EAD33?logo=playwright&logoColor=white">
   <img alt="Network: read-only" src="https://img.shields.io/badge/network-read--only-success">
 </p>
