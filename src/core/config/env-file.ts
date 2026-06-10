@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
-import * as path from "node:path";
 import * as dotenv from "dotenv";
-import { PACKAGE_ROOT } from "../config";
+import { MANAGED_ENV_FILE } from "../config";
 
 /**
  * Generic, repo-agnostic .env editing. It writes whatever validated key the caller
@@ -96,13 +95,13 @@ export function writeEnvFileVar(file: string, key: string, value: string): void 
 }
 
 /**
- * Persist a key to the package .env AND apply it to the live process. Persist FIRST,
+ * Persist a key to the managed .env AND apply it to the live process. Persist FIRST,
  * then mutate process.env only on a successful write — so a failed write can never
  * leave the running process ahead of disk (a later restart would silently revert it).
  * An empty value removes the key from both.
  */
 export function applyEnvVar(key: string, value: string): void {
-    writeEnvFileVar(path.join(PACKAGE_ROOT, ".env"), key, value);
+    writeEnvFileVar(MANAGED_ENV_FILE, key, value);
     if (value === "") {
         delete process.env[key];
     } else {

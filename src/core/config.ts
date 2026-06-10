@@ -16,6 +16,19 @@ export const PACKAGE_ROOT = process.env.SENTINEL_PACKAGE_ROOT
  */
 export const REPO_ROOT = process.env.SENTINEL_REPO_ROOT ? path.resolve(process.env.SENTINEL_REPO_ROOT) : PACKAGE_ROOT;
 
+/**
+ * Where dashboard-managed env vars persist. Deployed in a container the package dir is
+ * ephemeral — a redeploy would silently wipe Settings-entered tokens — so when a state
+ * dir is configured (SENTINEL_OUTPUT_DIR, volume-mounted in the image) the managed
+ * .env lives there. Locally it stays the package .env, same file as before.
+ */
+export const MANAGED_ENV_FILE = process.env.SENTINEL_OUTPUT_DIR
+    ? path.join(path.resolve(process.env.SENTINEL_OUTPUT_DIR), ".env")
+    : path.join(PACKAGE_ROOT, ".env");
+
+// Managed file first so Settings-entered values win over a stale baked-in package
+// .env; dotenv never overrides real process env, so host/service vars still win overall.
+dotenv.config({ path: MANAGED_ENV_FILE });
 dotenv.config({ path: path.join(PACKAGE_ROOT, ".env") });
 
 export interface EnvConfig {
