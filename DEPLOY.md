@@ -28,9 +28,12 @@ Two consequences:
 
 ## What you need first
 
-1. **A GitHub bot account + token.** Create a dedicated GitHub account (e.g. `sentinel`),
-   add it to the repo(s) with **write** access (it needs to comment), and generate a
-   **Personal Access Token**:
+1. **A GitHub bot account + token.** Create a dedicated GitHub account (e.g. `sentinel`)
+   and add it to the repo(s) with **write** access (it needs to comment). Then either:
+   - **Dashboard → Settings → Connect GitHub** (easiest): an OAuth device-flow login —
+     approve a one-time code on github.com while signed in as the bot, and Sentinel
+     stores the token itself (no manual token creation). Or:
+   - generate a **Personal Access Token** by hand:
    - Classic token scope: `repo` for private repos, or `public_repo` for public ones.
    - It must be able to read PRs/comments, post comments, and create/upload releases
      (recordings are uploaded as release assets under the `sentinel-artifacts` tag).

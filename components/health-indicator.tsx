@@ -52,7 +52,9 @@ export function HealthIndicator() {
             label: "GitHub",
             ok: data.ghAuthOk,
             warn: "fail",
-            tip: data.ghAuthOk ? "gh CLI authenticated" : "gh CLI not authenticated — run gh auth login",
+            tip: data.ghAuthOk
+                ? "GitHub authenticated"
+                : "GitHub not connected — use Settings → Connect GitHub (or run gh auth login)",
         },
         {
             label: "LLM",

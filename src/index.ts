@@ -44,6 +44,14 @@ export { detectProjectConfig } from "./core/onboard/detect";
 export type { RepoScanResult } from "./core/onboard/repo-scan";
 export { scanRepo } from "./core/onboard/repo-scan";
 export type { FieldMeta, OnboardConfidence, OnboardProposal } from "./core/onboard/types";
+export type { DeviceCodeGrant, DevicePollResult } from "./core/pr/device-auth";
+export {
+    DEFAULT_DEVICE_CLIENT_ID,
+    DEVICE_FLOW_SCOPE,
+    fetchTokenLogin,
+    pollDeviceToken,
+    requestDeviceCode,
+} from "./core/pr/device-auth";
 export type { IssueComment, PrMeta } from "./core/pr/github";
 export {
     detectRepo,
