@@ -58,6 +58,11 @@ function logVerdict(manifest: VerifyManifest): void {
     const failed = manifest.results.filter((r) => r.status === "failed").length;
     const blocked = manifest.results.filter((r) => r.status === "blocked").length;
     logger.info(`Steps: ${ok} ok, ${failed} failed, ${blocked} blocked (read-only).`);
+    if (manifest.recoveries > 0 || manifest.replanned) {
+        logger.warn(
+            `Self-correction: ${manifest.recoveries} recovery attempt(s)${manifest.replanned ? ", remainder replanned mid-run" : ""}.`,
+        );
+    }
     const v = manifest.verdict;
     const line = `VERDICT: ${v.outcome.toUpperCase()} (${v.confidence}) — ${v.summary}`;
     if (v.outcome === "pass") {
@@ -94,6 +99,8 @@ export interface PlanResult {
     runDir: string;
     /** Navigation skills (slugs) that informed the plan; empty when no skill pack exists. */
     skillsUsed: string[];
+    /** The injected skills text the planner saw — reused verbatim by a mid-run replan. */
+    skillsText: string | null;
 }
 
 /**
@@ -146,7 +153,16 @@ export async function planForProject(args: PlanArgs): Promise<PlanResult> {
     fs.mkdirSync(runDir, { recursive: true });
     fs.writeFileSync(path.join(runDir, "plan.json"), JSON.stringify(plan, null, 2));
 
-    return { meta, changedFiles, routes, graph, plan, runDir, skillsUsed: skills?.slugs ?? [] };
+    return {
+        meta,
+        changedFiles,
+        routes,
+        graph,
+        plan,
+        runDir,
+        skillsUsed: skills?.slugs ?? [],
+        skillsText: skills?.text ?? null,
+    };
 }
 
 export interface RunVerifyArgs extends PlanArgs {
@@ -180,7 +196,7 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
         throw new Error(`No login configured for ${adapter.displayName} — set the project's credential env vars.`);
     }
 
-    const { meta, changedFiles, routes, graph, plan, runDir, skillsUsed } = await planForProject(args);
+    const { meta, changedFiles, routes, graph, plan, runDir, skillsUsed, skillsText } = await planForProject(args);
 
     // Exact baseline selectors for the affected routes, for selector-first execution.
     // Reads the same pack as the planner; null until `sentinel skills` has run.
@@ -207,6 +223,8 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
     const destructive = adapter.safety.destructiveControlPatterns.map((p) => new RegExp(p, "i"));
     let videoPath: string | null = null;
     let results: StepResult[] = [];
+    let recoveries = 0;
+    let replanned = false;
     let verdict: Verdict = { outcome: "uncertain", confidence: "low", summary: "Not executed.", evidence: [] };
     try {
         if (adapter.authRequired && credentials) {
@@ -237,7 +255,7 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
                 logger.info(`Start: ${startOutcome.observation}`);
             }
         }
-        results = await executePlan(session, plan, {
+        const outcome = await executePlan(session, plan, {
             reasoner,
             destructive,
             settleMs: 6000,
@@ -248,9 +266,21 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
             loginPath: adapter.auth.loginPath,
             graph,
             pageSkills,
+            selfCorrect: env.selfCorrect
+                ? {
+                      maxRecoveries: env.maxRecoveries,
+                      maxReplans: env.maxReplans,
+                      prTitle: meta.title,
+                      prBody: meta.body,
+                      skillsText,
+                  }
+                : null,
         });
+        results = outcome.results;
+        recoveries = outcome.recoveries;
+        replanned = outcome.replanned;
         logger.info("Judging ...");
-        verdict = await judgeVerdict(reasoner, meta.title, meta.body, plan, results);
+        verdict = await judgeVerdict(reasoner, meta.title, meta.body, plan, results, { recoveries, replanned });
     } finally {
         videoPath = await closeQuietly(session.close);
     }
@@ -268,6 +298,8 @@ export async function runVerifyForProject(args: RunVerifyArgs): Promise<RunVerif
         pageSkillsUsed: pageSkills?.slugs ?? [],
         readOnly: preflight.effectiveReadOnly,
         blockedWrites: session.blocked.filter((b) => b.reason === "mutation").length,
+        recoveries,
+        replanned,
         model: reasoner.modelLabel,
         plan,
         results,

@@ -125,6 +125,10 @@ export interface StepResultView {
     index: number;
     step: PlanStep;
     status: StepResult["status"];
+    /** Origin of the step (self-correction provenance); omitted (= "plan") for planned steps. */
+    origin?: StepResult["origin"];
+    /** For a recovery step: the index of the failed planned step it tried to rescue. */
+    recoveredFrom?: number;
     observation: string;
     /** URL (/api/runs/:runId/screenshots/:name) or null when no screenshot was captured. */
     screenshotUrl: string | null;
@@ -158,6 +162,10 @@ export interface RunManifestView {
     /** True when the run never wrote (read-only enforced). */
     readOnly: boolean;
     blockedWrites: number;
+    /** Corrective recovery attempts spent (0 for runs predating self-correction). */
+    recoveries: number;
+    /** True when the plan's remainder was regenerated mid-run. */
+    replanned: boolean;
     model: string;
     plan: TestPlan;
     results: StepResultView[];

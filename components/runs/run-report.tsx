@@ -198,6 +198,31 @@ function SkillDriftNote({ results }: { results: RunManifestView["results"] }) {
     );
 }
 
+function SelfCorrectionNote({ m }: { m: RunManifestView }) {
+    if (m.recoveries === 0 && !m.replanned) {
+        return null;
+    }
+    return (
+        <div className="grid gap-2 rounded-xl border border-uncertain/30 bg-uncertain/5 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+                <AlertTriangleIcon className="size-4 text-uncertain" />
+                <span className="text-sm font-medium">Sentinel corrected itself mid-run</span>
+                <span className="text-xs text-muted-foreground">
+                    {m.recoveries > 0 && `${m.recoveries} recovery attempt${m.recoveries === 1 ? "" : "s"}`}
+                    {m.recoveries > 0 && m.replanned && " · "}
+                    {m.replanned && "remainder replanned"}
+                </span>
+            </div>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+                Some steps only succeeded after the agent corrected its own navigation or targeting — they are tagged on
+                the timeline below. Failures triaged as the app misbehaving were never recovered; they stay in the
+                evidence.{" "}
+                {m.replanned && "Because the plan was revised mid-run, verdict confidence is capped at medium."}
+            </p>
+        </div>
+    );
+}
+
 function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
     return (
         <section className="grid gap-4">
@@ -265,6 +290,8 @@ function Report({ m }: { m: RunManifestView }) {
             <Hero m={m} />
 
             <SkillDriftNote results={m.results} />
+
+            <SelfCorrectionNote m={m} />
 
             <Section title="Plan" subtitle={m.plan.goal}>
                 <div className="grid gap-4">

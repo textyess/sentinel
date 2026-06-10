@@ -372,6 +372,8 @@ function toStepResultView(runId: string, r: StepResult): StepResultView {
         index: r.index,
         step: r.step,
         status: r.status,
+        ...(r.origin ? { origin: r.origin } : {}),
+        ...(r.recoveredFrom !== undefined ? { recoveredFrom: r.recoveredFrom } : {}),
         observation: r.observation,
         screenshotUrl: r.screenshot ? screenshotUrl(runId, r.screenshot) : null,
         consoleErrors: r.consoleErrors,
@@ -420,6 +422,9 @@ export async function getRunManifest(runId: string): Promise<RunManifestView | n
         affectedRoutes: manifest.affectedRoutes,
         readOnly: manifest.readOnly,
         blockedWrites: manifest.blockedWrites,
+        // Manifests recorded before self-correction existed have neither field.
+        recoveries: manifest.recoveries ?? 0,
+        replanned: manifest.replanned ?? false,
         model: manifest.model,
         plan: manifest.plan,
         results: manifest.results.map((r) => toStepResultView(runId, r)),

@@ -38,6 +38,12 @@ export interface EnvConfig {
     paceMs: number;
     /** Cap on per-page dwell (ms). */
     maxDwellMs: number;
+    /** Self-correction during verify runs (step recovery + bounded mid-run replan). */
+    selfCorrect: boolean;
+    /** Max corrective recovery attempts per verify run. */
+    maxRecoveries: number;
+    /** Max mid-run replans per verify run. */
+    maxReplans: number;
 }
 
 function boolEnv(value: string | undefined, fallback: boolean): boolean {
@@ -79,5 +85,9 @@ export function loadEnvConfig(): EnvConfig {
         humanPacing: boolEnv(process.env.SENTINEL_HUMAN_PACING, true),
         paceMs: numEnv(process.env.SENTINEL_PACE_MS, 700),
         maxDwellMs: numEnv(process.env.SENTINEL_MAX_DWELL_MS, 6000),
+        // numEnv treats 0 as unset, so disabling goes through SENTINEL_SELF_CORRECT, not a 0 budget.
+        selfCorrect: boolEnv(process.env.SENTINEL_SELF_CORRECT, true),
+        maxRecoveries: numEnv(process.env.SENTINEL_MAX_RECOVERIES, 3),
+        maxReplans: numEnv(process.env.SENTINEL_MAX_REPLANS, 1),
     };
 }
