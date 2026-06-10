@@ -2,6 +2,7 @@ import type {
     Adapters,
     CreateProjectInput,
     EnvPresence,
+    GithubAuthView,
     Health,
     ProjectRecord,
     ProjectView,
@@ -78,6 +79,10 @@ export const api = {
     runs: () => request<RunSummary[]>("/api/runs"),
     runManifest: (runId: string) => request<RunManifestView>(`/api/runs/${encodeURIComponent(runId)}/manifest`),
     deleteRun: (runId: string) => request<{ ok: true }>(`/api/runs/${encodeURIComponent(runId)}`, { method: "DELETE" }),
+
+    githubAuth: () => request<GithubAuthView>("/api/github/auth"),
+    startGithubLogin: () => request<GithubAuthView>("/api/github/auth", { method: "POST" }),
+    disconnectGithub: () => request<GithubAuthView>("/api/github/auth", { method: "DELETE" }),
 
     env: () => request<EnvPresence>("/api/env"),
     updateEnv: (updates: Record<string, string>) =>

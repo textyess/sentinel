@@ -1,6 +1,7 @@
 import { Undo2Icon } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
+import { GithubConnect } from "@/components/settings/github-connect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,6 +33,8 @@ const CONFIG_FIELDS: ConfigField[] = [
 const SECRET_FIELDS: { key: string; label: string }[] = [
     { key: "SENTINEL_EMAIL", label: "Login email" },
     { key: "SENTINEL_PASSWORD", label: "Login password" },
+    // Manual fallback — the "Connect GitHub" button above fills this automatically.
+    { key: "GH_TOKEN", label: "GitHub token (or use Connect GitHub)" },
     { key: "ANTHROPIC_API_KEY", label: "Anthropic API key" },
     { key: "OPENAI_API_KEY", label: "OpenAI API key" },
     { key: "AWS_ACCESS_KEY_ID", label: "AWS access key id" },
@@ -97,6 +100,8 @@ function SettingsForm({ env, onClose }: { env: EnvPresence; onClose: () => void 
     return (
         <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
             <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-6">
+                <GithubConnect />
+
                 <section className="grid gap-4">
                     <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                         Configuration

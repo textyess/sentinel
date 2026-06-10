@@ -8,6 +8,7 @@ export const keys = {
     projects: ["projects"] as const,
     runs: ["runs"] as const,
     env: ["env"] as const,
+    githubAuth: ["github-auth"] as const,
 };
 
 export function useHealth() {
@@ -48,6 +49,37 @@ export function useRunManifest(runId: string) {
 
 export function useEnv(enabled: boolean) {
     return useQuery({ queryKey: keys.env, queryFn: api.env, enabled });
+}
+
+export function useGithubAuth(enabled: boolean) {
+    return useQuery({
+        queryKey: keys.githubAuth,
+        queryFn: api.githubAuth,
+        enabled,
+        // While a device-flow login is awaiting approval on github.com, poll so the
+        // panel flips to "connected" the moment the server stores the token.
+        refetchInterval: (query) => (query.state.data?.flow.state === "pending" ? 2_500 : false),
+    });
+}
+
+export function useStartGithubLogin() {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: api.startGithubLogin,
+        onSuccess: (data) => qc.setQueryData(keys.githubAuth, data),
+    });
+}
+
+export function useDisconnectGithub() {
+    const qc = useQueryClient();
+    return useMutation({
+        mutationFn: api.disconnectGithub,
+        onSuccess: (data) => {
+            qc.setQueryData(keys.githubAuth, data);
+            qc.invalidateQueries({ queryKey: keys.health });
+            qc.invalidateQueries({ queryKey: keys.env });
+        },
+    });
 }
 
 export function useCreateProject() {

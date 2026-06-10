@@ -20,6 +20,20 @@ export interface Health {
     pollerRunning: boolean;
 }
 
+// ---- GitHub device-flow login (Settings → Connect GitHub) --------------------
+
+export type GithubLoginFlow =
+    | { state: "idle" }
+    | { state: "pending"; userCode: string; verificationUri: string; expiresAt: string }
+    | { state: "connected"; login: string | null }
+    | { state: "error"; message: string };
+
+export interface GithubAuthView {
+    flow: GithubLoginFlow;
+    /** Whether GH_TOKEN is currently set (via the flow, manual paste, or the host env). */
+    tokenSet: boolean;
+}
+
 export interface Verdict {
     outcome: Outcome;
     confidence: Confidence;
