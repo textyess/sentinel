@@ -38,10 +38,21 @@ export interface SkillDiscrepancy {
     detail: string;
 }
 
+/**
+ * Where an executed step came from: the original plan, a self-correction (a corrective
+ * step or the retry it enabled), or the replanned remainder after a mid-run replan.
+ * Absent on manifests recorded before self-correction existed — read as "plan".
+ */
+export type StepOrigin = "plan" | "recovery" | "replan";
+
 export interface StepResult {
     index: number;
     step: PlanStep;
     status: "ok" | "failed" | "blocked" | "skipped";
+    /** Origin of the step; omitted (= "plan") for ordinary planned steps. */
+    origin?: StepOrigin;
+    /** For a recovery step: the index of the failed planned step it tried to rescue. */
+    recoveredFrom?: number;
     /** What Sentinel observed (or why it failed / was blocked). */
     observation: string;
     screenshot: string | null;
@@ -78,6 +89,10 @@ export interface VerifyManifest {
     /** True when the run never wrote (read-only enforced). */
     readOnly: boolean;
     blockedWrites: number;
+    /** Corrective recovery attempts spent during execution (0 = no self-correction needed). */
+    recoveries: number;
+    /** True when the remainder of the plan was regenerated mid-run after consecutive failures. */
+    replanned: boolean;
     model: string;
     plan: TestPlan;
     results: StepResult[];

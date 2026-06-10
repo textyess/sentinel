@@ -135,6 +135,11 @@ function StepRow({
                                 <ActionIcon className="size-3.5" />
                                 {action.label}
                             </span>
+                            {result?.origin && result.origin !== "plan" && (
+                                <span className="inline-flex shrink-0 items-center rounded-md border border-uncertain/30 bg-uncertain/10 px-2 py-0.5 text-[11px] font-medium text-uncertain">
+                                    {result.origin === "recovery" ? "self-correction" : "replanned"}
+                                </span>
+                            )}
                             <span className="min-w-0 break-words text-sm font-medium tracking-tight">
                                 {step.target}
                             </span>
@@ -190,17 +195,27 @@ function StepRow({
 }
 
 export function RunSteps({ plan, results }: { plan: TestPlan; results: StepResultView[] }) {
-    const byIndex = new Map(results.map((r) => [r.index, r]));
+    // Executed rows carry their own step (self-correction can insert recovery/replan
+    // steps, so result indices no longer mirror the plan). Pending rows surface planned
+    // steps a partial manifest never reached — but once the run self-corrected, the
+    // plan's tail no longer predicts what would have run, so no pending rows are shown.
+    const corrected = results.some((r) => r.origin === "recovery" || r.origin === "replan");
+    const rows: { step: TestPlan["steps"][number]; result: StepResultView | null }[] = results.map((r) => ({
+        step: r.step,
+        result: r,
+    }));
+    if (!corrected) {
+        for (let i = results.length; i < plan.steps.length; i++) {
+            const step = plan.steps[i];
+            if (step) {
+                rows.push({ step, result: null });
+            }
+        }
+    }
     return (
         <ol className="grid">
-            {plan.steps.map((step, i) => (
-                <StepRow
-                    key={i}
-                    index={i}
-                    step={step}
-                    result={byIndex.get(i) ?? null}
-                    last={i === plan.steps.length - 1}
-                />
+            {rows.map((row, i) => (
+                <StepRow key={i} index={i} step={row.step} result={row.result} last={i === rows.length - 1} />
             ))}
         </ol>
     );

@@ -21,7 +21,8 @@ const PLAN_SCHEMA = z.object({
     notes: z.array(z.string()),
 });
 
-const PLAN_SYSTEM =
+/** Shared with the mid-run replanner (`replan.ts`) so the read-only rules stay single-sourced. */
+export const PLAN_SYSTEM =
     "You are a QA engineer planning a READ-ONLY browser test that demonstrates a specific PR's change actually " +
     "works in the UI. Produce a short, concrete, ordered plan of browser steps that exercises EXACTLY what the PR " +
     "changed (open the new tab/panel/control, interact with it, and assert the result renders). " +

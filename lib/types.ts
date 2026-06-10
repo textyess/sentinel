@@ -200,10 +200,17 @@ export interface SkillDiscrepancy {
     detail: string;
 }
 
+/** Where an executed step came from; absent (= "plan") for ordinary planned steps. */
+export type StepOrigin = "plan" | "recovery" | "replan";
+
 export interface StepResultView {
     index: number;
     step: PlanStep;
     status: StepStatus;
+    /** Self-correction provenance; omitted for planned steps. */
+    origin?: StepOrigin;
+    /** For a recovery step: the index of the failed planned step it tried to rescue. */
+    recoveredFrom?: number;
     /** What Sentinel observed (or why it failed / was blocked). */
     observation: string;
     screenshotUrl: string | null;
@@ -232,6 +239,10 @@ export interface RunManifestView {
     /** True when the run never wrote (read-only enforced). */
     readOnly: boolean;
     blockedWrites: number;
+    /** Corrective recovery attempts spent (0 for runs predating self-correction). */
+    recoveries: number;
+    /** True when the plan's remainder was regenerated mid-run. */
+    replanned: boolean;
     model: string;
     plan: TestPlan;
     results: StepResultView[];

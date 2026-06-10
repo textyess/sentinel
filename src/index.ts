@@ -81,11 +81,13 @@ export type {
     RepoAdapter,
     SafetyConfig,
 } from "./core/types";
-export type { ExecuteOptions } from "./core/verify/execute";
+export type { ExecuteOptions, ExecuteOutcome, SelfCorrectOptions } from "./core/verify/execute";
 export { executePlan, judgeVerdict } from "./core/verify/execute";
 export type { PlanContext } from "./core/verify/plan";
 export { generatePlan } from "./core/verify/plan";
+export type { FailureClass, FailureDiagnosis } from "./core/verify/recover";
+export type { ReplanContext, ReplanResult } from "./core/verify/replan";
 export type { PlanArgs, PlanResult, RunVerifyArgs, RunVerifyResult } from "./core/verify/run";
 export { planForProject, runVerifyForProject } from "./core/verify/run";
-export type { PlanStep, StepResult, TestPlan, Verdict, VerifyManifest } from "./core/verify/types";
+export type { PlanStep, StepOrigin, StepResult, TestPlan, Verdict, VerifyManifest } from "./core/verify/types";
 export { SENTINEL } from "./persona";
