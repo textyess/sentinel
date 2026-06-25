@@ -363,10 +363,16 @@ export function triggerRunInBackground(
     return runId;
 }
 
-/** Per-project guard so one project isn't crawled twice at once. */
-const crawlInFlight = singleton("runner.crawlInFlight", () => new Set<string>());
+/** Per-project guard so one project isn't crawled twice at once. Maps to the in-flight
+ *  crawl's runId so the dashboard can reopen its live progress sheet after a reload or
+ *  when the crawl was started elsewhere (API, a prior session). */
+const crawlInFlight = singleton("runner.crawlInFlight", () => new Map<string, string>());
 export function isCrawlRunning(projectId: string): boolean {
     return crawlInFlight.has(projectId);
+}
+/** The runId of the crawl currently in flight for a project, or null if none is running. */
+export function activeCrawlRunId(projectId: string): string | null {
+    return crawlInFlight.get(projectId) ?? null;
 }
 
 function resolveBaselineUrl(project: ProjectRecord, env: ReturnType<typeof loadEnvConfig>): string {
@@ -400,7 +406,7 @@ export async function crawlProject(
     if (crawlInFlight.has(flightKey)) {
         return { runId, status: "blocked" };
     }
-    crawlInFlight.add(flightKey);
+    crawlInFlight.set(flightKey, runId);
 
     const record: RunRecord = {
         runId,
