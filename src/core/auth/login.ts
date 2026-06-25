@@ -70,6 +70,15 @@ export async function performLogin(
         const authedRe = new RegExp(auth.authenticatedUrlPattern);
         await page.waitForURL((url) => authedRe.test(url.pathname) && !isLoginPath(url.href, auth.loginPath), {
             timeout,
+            // Match the lenient lifecycle the login goto above already relies on. The
+            // default here is "load", which also blocks until the landed page fires its
+            // load event — and production landing pages routinely never do within the
+            // timeout (a hanging third-party pixel, a persistent connection, a lazy
+            // subresource). That surfaced as a false "did not reach an authenticated
+            // route" even though the redirect had landed and auth had succeeded. We only
+            // care that the URL is now authenticated; callers wait for readiness before
+            // they touch the DOM.
+            waitUntil: "domcontentloaded",
         });
     } catch (error) {
         const url = page.url();
