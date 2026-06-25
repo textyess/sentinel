@@ -20,6 +20,7 @@ import { indexRuns, resolveRunArtifacts, screenshotUrl, statusFromOutcome, video
 import { credEnvNames, slug } from "./naming";
 import { isPollerRunning } from "./poller";
 import {
+    activeCrawlRunId,
     isAutodetectRunning,
     isCrawlRunning,
     isPrRunning,
@@ -129,6 +130,8 @@ export interface ProjectView extends ProjectRecord {
     skillsPresent: boolean;
     /** False for a public (no-login) generic project; true otherwise. */
     authRequired: boolean;
+    /** runId of an in-flight baseline crawl, so the dashboard can reopen its live sheet. */
+    activeCrawlRunId: string | null;
 }
 
 export async function getProjects(): Promise<ProjectView[]> {
@@ -150,7 +153,14 @@ export async function getProjects(): Promise<ProjectView[]> {
                         (process.env[p.adapter.passwordEnv] || env.password),
                 )
               : Boolean(env.email && env.password);
-        return { ...p, graphPresent, credsConfigured, skillsPresent, authRequired };
+        return {
+            ...p,
+            graphPresent,
+            credsConfigured,
+            skillsPresent,
+            authRequired,
+            activeCrawlRunId: activeCrawlRunId(p.id),
+        };
     });
 }
 

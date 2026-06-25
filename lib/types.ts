@@ -57,11 +57,16 @@ export interface ProjectView {
     skillsPresent: boolean;
     /** False for a public (no-login) project — the UI then shows "no login needed". */
     authRequired: boolean;
+    /** runId of an in-flight baseline crawl, so a row can reopen its live progress sheet. */
+    activeCrawlRunId: string | null;
 }
 
 // POST /api/projects returns the base record — graphPresent/credsConfigured/skillsPresent
-// are derived only by GET /api/projects, so the create response omits them.
-export type ProjectRecord = Omit<ProjectView, "graphPresent" | "credsConfigured" | "skillsPresent">;
+// and activeCrawlRunId are derived only by GET /api/projects, so the create response omits them.
+export type ProjectRecord = Omit<
+    ProjectView,
+    "graphPresent" | "credsConfigured" | "skillsPresent" | "activeCrawlRunId"
+>;
 
 export interface RunSummary {
     runId: string;

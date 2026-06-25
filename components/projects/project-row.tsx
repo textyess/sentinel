@@ -97,6 +97,8 @@ export function ProjectRow({
     // A public project (authRequired === false) needs no credentials to be "ready".
     const credsOk = project.authRequired === false || project.credsConfigured;
     const ready = project.graphPresent && credsOk;
+    // When a baseline crawl is in flight, the row offers a way back into its live sheet.
+    const activeCrawl = project.activeCrawlRunId;
 
     function onVerify(e: FormEvent<HTMLFormElement>) {
         e.preventDefault();
@@ -116,10 +118,27 @@ export function ProjectRow({
         );
     }
 
+    function viewCrawl(runId: string) {
+        onRun(runId, `${project.repo} — baseline crawl`, "crawl");
+    }
+
     function onCrawl() {
+        // A crawl is already in flight — reopen its live progress instead of starting another
+        // (the server would 409 anyway).
+        if (activeCrawl) {
+            viewCrawl(activeCrawl);
+            return;
+        }
         crawl.mutate(project.id, {
-            onSuccess: ({ runId }) => onRun(runId, `${project.repo} — baseline crawl`, "crawl"),
-            onError: (err) => toast.error(err instanceof ApiError ? err.message : "Could not start crawl"),
+            onSuccess: ({ runId }) => viewCrawl(runId),
+            onError: (err) => {
+                // One may have started between our last poll and this click; attach if we can.
+                if (err instanceof ApiError && err.status === 409 && project.activeCrawlRunId) {
+                    viewCrawl(project.activeCrawlRunId);
+                    return;
+                }
+                toast.error(err instanceof ApiError ? err.message : "Could not start crawl");
+            },
         });
     }
 
@@ -212,6 +231,16 @@ export function ProjectRow({
                         neutral={project.authRequired === false}
                         neutralText="no login needed"
                     />
+                    {activeCrawl && (
+                        <button
+                            type="button"
+                            onClick={() => viewCrawl(activeCrawl)}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-running/30 bg-running/10 px-2 py-0.5 text-[11px] font-medium text-running transition-colors hover:bg-running/20"
+                            aria-label={`View live crawl progress for ${project.repo}`}>
+                            <span className="size-1.5 animate-pulse rounded-full bg-running" />
+                            Crawling… · View progress
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -243,8 +272,12 @@ export function ProjectRow({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="min-w-48">
                         <DropdownMenuItem onClick={onCrawl} disabled={crawl.isPending}>
-                            {project.graphPresent ? <RefreshCwIcon /> : <RadarIcon />}
-                            {project.graphPresent ? "Re-crawl baseline" : "Build baseline"}
+                            {!activeCrawl && project.graphPresent ? <RefreshCwIcon /> : <RadarIcon />}
+                            {activeCrawl
+                                ? "View crawl progress"
+                                : project.graphPresent
+                                  ? "Re-crawl baseline"
+                                  : "Build baseline"}
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setBaselineOpen(true)}>
                             <ExternalLinkIcon />
