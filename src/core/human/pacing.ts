@@ -1,4 +1,5 @@
 import type { Page } from "playwright";
+import { isCursorActive } from "../browser/cursor";
 
 /**
  * Human-like pacing. Two behaviours:
@@ -7,6 +8,12 @@ import type { Page } from "playwright";
  *    (content-rich pages get read + scrolled; sparse pages get skimmed).
  * This makes recorded runs look like a person using the app, lets async content
  * finish rendering, and is the agent's proxy for "this page is worth more time".
+ *
+ * Pacing is a recording cosmetic, exactly like the visible cursor: both only earn
+ * their cost when a human will watch the video. So both no-op unless the run is
+ * recorded (`isCursorActive`). A non-recorded run — the baseline crawl, onboarding
+ * detection — produces a graph, not a video, and so pays none of this latency;
+ * `waitForInteractive` still handles render-settle there.
  */
 export interface PacingOptions {
     enabled: boolean;
@@ -46,7 +53,7 @@ async function measure(page: Page): Promise<PageMetrics> {
 
 /** A short randomized pause before an action (navigate, click). */
 export async function thinkPause(page: Page, pacing: PacingOptions): Promise<void> {
-    if (!pacing.enabled) {
+    if (!pacing.enabled || !isCursorActive(page)) {
         return;
     }
     await page.waitForTimeout(jitter(pacing.baseThinkMs)).catch(() => {});
@@ -57,7 +64,7 @@ export async function thinkPause(page: Page, pacing: PacingOptions): Promise<voi
  * scrolling through tall pages in steps. Returns the target dwell taken (ms).
  */
 export async function humanDwell(page: Page, pacing: PacingOptions): Promise<number> {
-    if (!pacing.enabled) {
+    if (!pacing.enabled || !isCursorActive(page)) {
         return 0;
     }
     const metrics = await measure(page);
