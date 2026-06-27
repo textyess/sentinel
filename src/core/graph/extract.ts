@@ -22,7 +22,14 @@ const INTERACTIVE_SELECTOR =
  * Wait until the page has rendered interactive content and the count has settled,
  * so the crawler never extracts a half-rendered shell (which yields 0 controls).
  * Returns the final count; resolves early once stable, or at the timeout.
+ *
+ * Polls fast (POLL_MS) but still needs two consecutive equal, non-zero reads — so a
+ * ready page clears in ~2 polls instead of dwelling on the timeout. This floor is
+ * paid after every navigation and every click, so keeping it small matters; the
+ * two-read quiescence is what guards against catching a mid-render frame.
  */
+const POLL_MS = 150;
+
 export async function waitForInteractive(page: Page, timeoutMs: number): Promise<number> {
     const deadline = Date.now() + timeoutMs;
     const countExpr = `document.querySelectorAll(${JSON.stringify(INTERACTIVE_SELECTOR)}).length`;
@@ -40,7 +47,7 @@ export async function waitForInteractive(page: Page, timeoutMs: number): Promise
             stable = 0;
         }
         last = count;
-        await page.waitForTimeout(300);
+        await page.waitForTimeout(POLL_MS);
     }
     return count;
 }

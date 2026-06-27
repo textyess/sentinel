@@ -1,7 +1,7 @@
 import type { Page } from "playwright";
 import { z } from "zod";
 import { clickBySelectors } from "../browser/interact";
-import { extractControls, waitForInteractive } from "../graph/extract";
+import { extractControls, stateSignature, waitForInteractive } from "../graph/extract";
 import type { ControlRef, EdgeVia, PageNode } from "../graph/types";
 import { isLoginPath, pathnameOf, resolveInternalPath, stripQuery } from "../graph/url";
 import { type PacingOptions, thinkPause } from "../human/pacing";
@@ -79,9 +79,13 @@ async function classifyControls(reasoner: Reasoner, node: PageNode, candidates: 
 /**
  * Click the model-chosen non-destructive controls (expanders, tabs, menus) and
  * harvest navigation they reveal — the links a pure <a href> crawl can't see
- * because they live behind collapsed groups. Each actuation (after the first)
- * restores to the page first, so clicks never compound; persistent chrome is
- * actuated only once across the whole crawl; and a click that drops the session
+ * because they live behind collapsed groups. Every control is clicked from the
+ * clean page, so clicks never compound — but the restore (a reload) runs before
+ * the next control ONLY when the previous click actually changed the page:
+ * navigated away, or altered the control set. A click that did nothing (didn't
+ * land, or left the controls identical) skips the reload, since there is nothing
+ * to undo — which is most of the cost once a page is mapped. Persistent chrome is
+ * actuated only once across the whole crawl, and a click that drops the session
  * (lands on /login) stops actuation rather than corrupting the graph.
  */
 export async function actuateForDiscovery(
@@ -107,7 +111,8 @@ export async function actuateForDiscovery(
     const restoreUrl = stripQuery(node.rawUrlSample);
     const knownHrefs = new Set(controls.filter((c) => c.kind === "navigation" && c.href).map((c) => c.href as string));
     const discovered: DiscoveredLink[] = [];
-    // The crawler has just navigated here, so the first actuation needs no restore.
+    // The crawler has just navigated here, so the first actuation needs no restore;
+    // thereafter a restore runs only after a click that actually dirtied the page.
     let dirtied = false;
 
     for (const control of toClick) {
@@ -120,6 +125,8 @@ export async function actuateForDiscovery(
             } catch {
                 continue;
             }
+            // Back on the clean page — the next click starts from a known-good state.
+            dirtied = false;
         }
         if (isLoginPath(page.url(), options.loginPath)) {
             return discovered;
@@ -128,8 +135,8 @@ export async function actuateForDiscovery(
         const beforePath = pathnameOf(page.url());
         await thinkPause(page, options.pacing);
         const clicked = await clickBySelectors(page, control.selectors, options.clickTimeoutMs);
-        dirtied = true;
         if (!clicked) {
+            // No selector resolved/landed, so the page is untouched — no restore needed.
             continue;
         }
         await waitForInteractive(page, options.settleMs);
@@ -147,7 +154,8 @@ export async function actuateForDiscovery(
         };
 
         if (pathnameOf(afterUrl) !== beforePath) {
-            // The control navigated to a different page.
+            // The control navigated to a different page — we're off the clean page, so restore next.
+            dirtied = true;
             const internal = resolveInternalPath(afterUrl, options.baseUrl);
             if (internal && internal !== node.url && !knownHrefs.has(internal)) {
                 discovered.push({ href: internal, via });
@@ -160,6 +168,9 @@ export async function actuateForDiscovery(
         const revealed = await extractControls(page, options.destructive, options.baseUrl).catch(
             (): ControlRef[] => [],
         );
+        // Restore before the next control only if this click changed the control set
+        // (node.id is the clean page's signature); a no-op click left nothing to undo.
+        dirtied = stateSignature(node.url, revealed) !== node.id;
         for (const link of revealed) {
             if (
                 link.kind === "navigation" &&
